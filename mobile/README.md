@@ -68,5 +68,3 @@ Xem chi tiết đầy đủ tại tài liệu kiến trúc [docs/map-and-zone-sp
   - Cảm biến siêu âm A02YYUW bắt buộc gắn vuông góc hướng xuống mặt nước trên các kết cấu kiên cố: **Dầm cầu vượt sông**, **Cửa cống hộp ngăn triều / xả lũ**, hoặc **Kè đập tràn bê tông**.
   - Tuyệt đối không đặt cảm biến trên ngọn cây, trong nhà dân hay giữa mặt đường nhựa.
   - Các trạm mô phỏng (`sim-01`, `sim-02`...) được gắn tọa độ GPS tại các điểm xung yếu thủy văn thật ở thượng lưu và cửa sông để mô phỏng dòng chảy lũ dâng thực tế.
-
-

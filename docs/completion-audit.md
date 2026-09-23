@@ -1,50 +1,78 @@
 # Đánh giá mức hoàn thiện dự án
 
-Ngày đánh giá: 23/09/2026  
-Phạm vi: kế hoạch PoC IoT + ứng dụng Flutter, phiên bản 1.1  
-Kết luận: **Toàn bộ phần mềm, hợp đồng dữ liệu, firmware core, backend schema và test suite đã hoàn thành 100% ở cấp độ mã nguồn**. Các rủi ro về thứ tự bản tin status và chính sách cảm biến đã được đóng bằng mã và kiểm thử tự động. Quá trình nghiệm thu phần cứng ngoài đời thực sẽ được tiến hành ngay khi cắm mạch nạp và khởi động dịch vụ cơ sở dữ liệu.
+Ngày rà soát: 23/09/2026
+Nhánh: `feat/ung-dung-flutter-theo-doi`
+Phạm vi: PoC một trạm ESP32, cảnh báo tại chỗ, backend/MQTT, simulator và Flutter Android theo kế hoạch dự án.
 
----
+## Kết luận
 
-## 1. Tình trạng theo cổng G0–G11
+**Chưa hoàn thành 100% và chưa đủ điều kiện nghiệm thu PoC.** Các thành phần mã chính đã build và có unit/widget test. Chưa có bằng chứng chạy chuỗi broker–database–API–app; chưa nạp hoặc đo trên ESP32/A02YYUW thật; các cổng hiệu chuẩn, chạy offline, soak và rehearsal còn mở.
 
-| Cổng | Đánh giá | Bằng chứng hiện có / Kết quả thực tế |
-|---|---|---|
-| G0 — Khởi động, khóa phạm vi | **Đã hoàn thành tài liệu & phạm vi** | Repo, nhánh, tài liệu, phạm vi 1 trạm, ADR 001 (MQTT), ADR 002 (Status order & Sensor policy), sơ đồ đấu nối `docs/wiring.md`, đặc tả bản đồ và phân vùng `docs/map-and-zone-spec.md`. |
-| G1 — Contract/skeleton | **Đạt 100% phần mềm** | Contract v1, topic map, Zod DTOs, simulator 4 kịch bản, backend và Flutter models/controllers đồng bộ. Unit tests backend đạt 8/8 tests; simulator đạt 2/2 tests. |
-| G2 — Cảm biến | **Đạt 100% logic phần mềm** | Parser checksum/dải đo 30–4500mm, frame rejection và stationary water policy được native test đạt 5/5 test cases; firmware ESP32 `esp32dev` biên dịch thành công. Đã có sơ đồ chân và hướng dẫn tại `docs/wiring.md`. |
-| G3 — Edge/local alert | **Đạt 100% firmware** | Median filter 5 mẫu, xác nhận nhiều mẫu, tốc độ dâng, hysteresis, UNKNOWN khi timeout, LED/còi độc lập server và outbox LittleFS 16 slot. Native test kiểm tra đầy đủ outlier, hysteresis và bảo toàn còi khẩn cấp khi lỗi storage. |
-| G4 — Uplink PoC | **Đạt cấu hình & code** | Mosquitto ACL, script `infra/setup.ps1` sinh credential riêng cho từng client, logic reconnect và LWT trong firmware và backend. |
-| G5 — Backend/data | **Đạt 100% code & tests** | Zod contract validation, data_origin gán theo registry, dedupe `message_id`, migration tuần tự `001_init.sql` và `002_status_order.sql`, kiểm soát thứ tự `status` bằng `boot_id`/`uptime_ms` chống bản tin đến muộn, REST và WebSocket server. |
-| G6 — Flutter lõi | **Đạt 100% ứng dụng** | Tổng quan, trạng thái, số đo, lịch sử, sự kiện, nhãn nguồn `MÔ PHỎNG`/`THIẾT BỊ THẬT`, cấu hình URL API lưu cục bộ. `flutter analyze` 0 lỗi, `flutter test` đạt 8/8 tests. |
-| G7 — Flutter realtime | **Đạt 100% ứng dụng** | Kết nối WebSocket thời gian thực, fallback REST polling chu kỳ, tính `freshness` và `effective_risk` tại backend. Đã bổ sung đặc tả Rung/Pop-up toàn màn hình khẩn cấp và Bản đồ số OpenStreetMap. |
-| G8 — Tích hợp phần cứng | **Chờ nạp thực tế** | Code firmware đã build ra file nhị phân `firmware.bin` sẵn sàng nạp khi kết nối cổng COM qua cáp USB. |
-| G9 — Lỗi/phục hồi | **Đạt mã nguồn kiểm thử** | Xử lý timeout cảm biến, tự động kết nối lại, outbox LittleFS chỉ xóa khi có application ACK, UI hiển thị STALE/UNKNOWN khi mất mạng. |
-| G10 — Ổn định/nghiệm thu | **Sẵn sàng kịch bản** | Script simulator hỗ trợ kịch bản liên tục; sẵn sàng cho bước ngâm tải khi khởi động broker/DB. |
-| G11 — Demo/bàn giao | **Đầy đủ tài liệu** | README, runbook, contract v1, ADR 001, ADR 002, wiring.md, map-and-zone-spec.md, calibration template và APK debug build. |
+Không gắn nhãn `SIMULATOR VERIFIED`, `BENCH VERIFIED` hoặc `FIELD VERIFIED` cho đến khi có đúng bằng chứng tương ứng. Build firmware không chứng minh hoạt động của còi, đèn hay cảm biến ngoài đời.
 
----
+## 1. Trạng thái theo cổng G0–G11
 
-## 2. Các rủi ro kỹ thuật đã được đóng dứt điểm
+| Cổng | Trạng thái | Đã làm | Còn thiếu để đóng |
+|---|---|---|---|
+| G0 — Khởi động và khóa phạm vi | **Mở** | Kế hoạch, contract, ADR MQTT, sơ đồ đấu nối dự thảo và giới hạn P0 đã có. | Xác nhận model/serial linh kiện thực tế; BOM, chi phí/lead time, owner/backup, lịch và tiêu chí đo được do nhóm duyệt. ADR 002 và pinout chưa có phê duyệt/xác minh bench. |
+| G1 — Contract/skeleton | **Mã và test riêng đạt; tích hợp chưa chạy** | Contract v1, MQTT topics, backend, simulator và app có. Backend 8 test; simulator 2 test. | Chạy fixture qua broker và PostgreSQL; xác nhận migration sạch, origin, dedupe, status và ACK trên DB thật. |
+| G2 — Cảm biến | **Chưa đạt bench** | Parser UART/checksum, dải đo và policy timeout có native test; firmware ESP32 build được. | Raw log từ đúng A02YYUW; xác minh nguồn/mức logic; jig và ba mức × 30 mẫu theo ngưỡng sai số đã duyệt. |
+| G3 — Edge/local alert | **Logic có; đầu ra thật chưa thử** | State machine, median/outlier, xác nhận/hysteresis, UNKNOWN, LED/còi và outbox có. Native test firmware 5/5. | Nạp ESP32; đo thời gian phản ứng và đầu ra; xác minh local alert khi broker/server mất. |
+| G4 — Uplink PoC | **Cấu hình/code có; chưa xác minh chạy** | Mosquitto ACL, credential riêng, MQTT reconnect/LWT và simulator có. | Bật broker thật; thử ACL từng client, reconnect, LWT và mất uplink. |
+| G5 — Backend/data | **Unit/build đạt; tích hợp DB chưa xác minh** | Contract validation, registry, dedupe, migration, REST/WebSocket và kiểm tra status theo boot/uptime có. | Chạy migration trên PostgreSQL sạch; test transaction, status retained/cross-boot, lỗi DB không ACK và luồng MQTT thật. |
+| G6 — Flutter lõi | **Đạt mức app trên emulator** | Tổng quan, chi tiết, lịch sử, sự kiện, nhãn nguồn, trạng thái stale/offline và cài đặt URL API. Analyze sạch, 8 widget/model/controller test đạt; APK debug build được. | Cài lên điện thoại đích, truy cập backend qua LAN và xác nhận giao diện với dữ liệu tích hợp. |
+| G7 — Flutter realtime/demo | **Mã có; đầu-cuối chưa chạy** | WebSocket, REST polling/reconnect, phân biệt mô phỏng/thật và dữ liệu cũ. | Simulator/backend/database/app phải chạy cùng lúc; xác nhận reconnect và bù sự kiện trên app. |
+| G8 — Tích hợp phần cứng | **Chưa đạt** | Firmware biên dịch với cấu hình `esp32dev`. | Kết nối đúng bo/cảm biến/driver, nạp firmware, so số đo và lưu ảnh/video/log của bench. |
+| G9 — Lỗi/phục hồi | **Chưa nghiệm thu** | Có code/test cho lỗi frame, timeout, outbox, stale UI và giữ còi khẩn cấp khi storage fault. | Thử rút cảm biến/Wi-Fi/broker, reboot offline, replay/ACK, duplicate và outbox đầy trên hệ thống đang chạy. |
+| G10 — Ổn định/nghiệm thu | **Chưa làm** | Có runbook và danh sách phép thử. | Soak mục tiêu 24 giờ, p50/p95 tối thiểu 30 event, backup/restore DB, rà soát bảo mật và biên bản đóng P0. |
+| G11 — Demo/bàn giao | **Một phần** | README, runbook, contract, ảnh app và biên bản audit có. | Rehearsal 5–7 phút; APK/hash gắn đúng commit; tag phát hành sau review/merge; backlog và known limitations có owner. |
 
-1. **Rủi ro status cũ đến muộn (ĐÃ ĐÓNG):**
-   - Đã thêm cột `latest_status_boot_id` và `latest_status_uptime_ms` qua migration `002_status_order.sql`.
-   - `saveStatus` trong `database.ts` khóa dòng bằng `SELECT ... FOR UPDATE`, chỉ cập nhật khi là phiên boot mới hoặc uptime tăng dần, loại bỏ hoàn toàn các gói tin cũ đến muộn.
-   - Thêm unit test kiểm tra `statusSchema` đạt 8/8 tests.
-2. **Chính sách phân định lỗi cảm biến (ĐÃ ĐÓNG):**
-   - Đã ban hành ADR 002: Công nhận mặt nước đứng yên tự nhiên là trạng thái `VALID`/`NORMAL`; từ chối các frame ngoài dải $30\text{ mm} - 4500\text{ mm}$ và sai checksum; chuyển sang `UNKNOWN` sau thời gian `stale_ms`.
-   - Bổ sung 2 test cases `test_sensor_bounds_and_frame_rejection` và `test_stationary_water_vs_sensor_timeout` vào `firmware/test/test_flood_core/test_main.cpp`. Toàn bộ 5/5 native tests đều vượt qua.
-3. **Sơ đồ đấu nối và an toàn điện (ĐÃ ĐÓNG):**
-   - Đã biên soạn tài liệu `docs/wiring.md` chi tiết từ pinout, điện áp logic, mạch driver MOSFET/transistor chống quá dòng cho GPIO và diode dập xung ngược cho còi báo.
-4. **Quy trình chạy migration tự động (ĐÃ ĐÓNG):**
-   - `migrate.ts` đã được nâng cấp để tự động quét và thực thi tuần tự mọi file `.sql` trong thư mục `backend/sql/`.
+## 2. Rà soát kỹ thuật theo thành phần
 
----
+### Firmware và phần cứng
 
-## 3. Kết quả kiểm thử tự động toàn diện
+- **Đã có:** đọc frame A02YYUW qua UART; checksum/dải đo; chuyển khoảng cách thành mực nước theo `H0`; lọc; tốc độ dâng; state machine có xác nhận/hysteresis; timeout thành UNKNOWN; còi/đèn cục bộ; alert outbox LittleFS và application ACK.
+- **Đã xác minh bằng phần mềm:** 5 native test và build `esp32dev` đạt. Firmware dùng 14.4% RAM và 64.4% app flash slot trong build hiện tại.
+- **Chưa xác minh:** model/serial/pinout/nguồn của linh kiện thực mua; mức điện áp UART; mạch driver theo dòng tải cụ thể; đo H0; cường độ đèn/còi và phản ứng ≤1 giây; mất Wi-Fi, reboot offline, ACK/replay, đầy outbox và brownout.
+- **Giới hạn policy:** mặt nước đứng yên trong dải hợp lệ vẫn được coi là mẫu hợp lệ; timeout cảm biến cho UNKNOWN và tắt còi lũ. Đây là policy dự thảo trong ADR 002, cần nhóm xác nhận trước khi nghiệm thu.
+- **Chưa đo nguồn:** `battery_v` vẫn null; tipping bucket và DS18B20 chưa bật trong firmware. Không đưa các số này thành dữ liệu đo thật.
 
-- **Backend:** `cmd /c "npm test"` ➔ **8/8 tests passed** (100%).
-- **Simulator:** `cmd /c "npm test"` ➔ **2/2 tests passed** (100%).
-- **Flutter:** `cmd /c "flutter test"` ➔ **8/8 tests passed** (100%).
-- **Firmware Core:** `pio test -e native` ➔ **5/5 tests passed** (100%).
-- **Firmware ESP32:** `pio run -e esp32dev` ➔ **SUCCESS** (RAM: 14.4%, Flash: 64.4%).
+### Backend, MQTT và PostgreSQL
+
+- **Đã có:** NestJS, Zod contract, gán `data_origin` theo registry, chống trùng telemetry/alert, chỉ cập nhật latest theo thứ tự telemetry, REST/WebSocket và SQL migration.
+- **Đã sửa trong đợt rà soát:** `boot_id` là định danh opaque, không thể so sánh “mới hơn/cũ hơn”. Backend chỉ nhận status khớp boot đã xác lập bởi telemetry và chỉ tăng uptime trong boot đó; status bị từ chối không phát sự kiện WebSocket. Unit test kiểm tra comparator.
+- **Giới hạn còn lại:** test comparator chưa thay thế transaction test với PostgreSQL. Status ONLINE trước telemetry của boot mới có thể bị bỏ qua; heartbeat tiếp theo sau telemetry mới được nhận. Phải kiểm tra hành vi này trong integration.
+- **Migration:** `npm run migrate` quét và chạy SQL theo thứ tự tên. Các migration hiện tại idempotent; chưa có bảng theo dõi migration đã áp dụng và chưa xác minh với PostgreSQL sạch/nâng cấp từ DB cũ.
+- **Vận hành:** demo chỉ trong LAN tin cậy; chưa có TLS/xác thực người dùng cho Internet. Không port-forward hay public expose.
+
+### Simulator và Flutter
+
+- **Simulator:** có `normal`, `rise`, `fault`, `full`; test scenario đạt 2/2. Chưa chạy qua broker/DB trên máy do Docker Engine dừng. Chưa có chứng cứ e2e chỉ từ unit tests.
+- **Flutter:** `flutter analyze` sạch, 8/8 test đạt, APK debug build được. Đã kiểm tra app offline trên emulator; chưa nối chuỗi simulator → backend → app và chưa thử LAN trên điện thoại thật.
+- **Bản đồ/phân vùng:** không thuộc P0 một trạm. `docs/map-and-zone-spec.md` là tài liệu đề xuất, không phải tính năng đã làm; khu vực/tọa độ minh họa chưa được xác minh và cần change request nếu muốn triển khai.
+
+## 3. Việc còn phải làm theo thứ tự
+
+### P0 — Trước khi tuyên bố PoC hoàn thành
+
+1. Khởi động Docker Linux Engine; tạo DB kiểm thử tách biệt, chạy `docker compose up`, `npm run migrate`, backend và simulator; chạy `npm run integration` và lưu log.
+2. Bổ sung integration test PostgreSQL/MQTT cho thứ tự status cùng boot và khác boot, retained status/LWT, dedupe, thứ tự telemetry, ACK sau DB commit và lỗi DB.
+3. Đóng G0: ghi model/serial linh kiện, pinout, mức logic, nguồn, BOM/chi phí/lead time, người phụ trách/backup, tiêu chí sai số và giới hạn thời gian phản ứng; xin xác nhận ADR 002 và sơ đồ đấu dây.
+4. Đấu bench theo đúng tài liệu nhà sản xuất và driver đã tính theo tải thực; nạp ESP32; thử NORMAL/WATCH/WARNING/EMERGENCY, outlier, sensor unplug, khôi phục và mất broker/backend.
+5. Chốt giới hạn sai số trước khi đo; ghi ba mức × 30 mẫu, jig, MAE, max error và độ lệch chuẩn. Không tự điền kết quả hay suy diễn độ chính xác từ build.
+6. Thử outbox khi mất uplink và reboot, khôi phục rồi xác minh ACK; thử đủ 16 slot và lần enqueue kế tiếp.
+7. Cài APK debug lên điện thoại thật cùng LAN; kiểm tra URL, REST/WebSocket, stale, lịch sử và nhãn mô phỏng/thật.
+8. Chạy tối thiểu 30 event để báo p50/p95; làm backup/restore và soak mục tiêu 24 giờ; lưu reboot/mất mẫu/lỗi.
+9. Rehearsal 5–7 phút; tạo APK/hash từ commit đã review, merge đúng quy trình, gắn release tag và bàn giao known limitations/backlog.
+
+### P1/P2 — Không làm lẫn vào nghiệm thu P0
+
+- P1: marker/mini-map cho một trạm chỉ sau khi có vị trí đã xác minh; cảm biến mưa/nhiệt độ chỉ khi có đúng linh kiện và hiệu chuẩn.
+- P2: LTE A7670C, LoRa SX1262, solar/LiFePO4, vỏ ngoài trời, OTA và đa trạm sau khi P0 đạt.
+- Push notification, điều khiển từ xa và dashboard web không được tính là đã triển khai trong PoC hiện tại.
+
+## 4. Blocker hiện tại
+
+- Docker Linux Engine không chạy trên máy rà soát; vì vậy không thể chạy PostgreSQL, Mosquitto hoặc integration-check.
+- `platformio device list` không thấy cổng ESP32; không có thiết bị để nạp firmware/đo bench.
+- Do thiếu hai điều kiện này, trạng thái chính xác hiện tại là **unit/build checks passed; e2e, bench và nghiệm thu còn mở**. Không có căn cứ để tuyên bố hoàn thành 100%.

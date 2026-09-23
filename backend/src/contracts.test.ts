@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { statusSchema, telemetrySchema } from './contracts';
-import { presentStation } from './database';
+import { presentStation, shouldAcceptStatus } from './database';
 
 const message = {
   schema_version: 1,
@@ -66,6 +66,22 @@ describe('status contract', () => {
       device_health: 'OK',
     };
     expect(statusSchema.safeParse(invalidStatus).success).toBe(false);
+  });
+
+  it('không coi boot_id khác là boot mới nếu telemetry đã xác lập boot hiện tại', () => {
+    const cursor = {
+      latest_boot_id: 'boot-current',
+      latest_status_boot_id: 'boot-current',
+      latest_status_uptime_ms: '9000',
+    };
+    expect(shouldAcceptStatus(
+      { boot_id: 'boot-current', uptime_ms: 10000 },
+      { ...cursor, latest_boot_id: null },
+    )).toBe(false);
+    expect(shouldAcceptStatus({ boot_id: 'boot-old', uptime_ms: 50000 }, cursor)).toBe(false);
+    expect(shouldAcceptStatus({ boot_id: 'boot-current', uptime_ms: 8000 }, cursor)).toBe(false);
+    expect(shouldAcceptStatus({ boot_id: 'boot-current', uptime_ms: 9000 }, cursor)).toBe(false);
+    expect(shouldAcceptStatus({ boot_id: 'boot-current', uptime_ms: 10000 }, cursor)).toBe(true);
   });
 });
 

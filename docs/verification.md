@@ -1,8 +1,8 @@
 # Biên bản kiểm tra PoC
 
-Ngày: 23/09/2026  
-Nhánh: `feat/ung-dung-flutter-theo-doi`  
-Commit nền trước đợt hoàn thiện: `0f7f5cd`
+Ngày: 23/09/2026
+Nhánh: `feat/ung-dung-flutter-theo-doi`
+Phiên bản nguồn: commit `c0a3900` cộng các sửa đổi audit chưa commit tại thời điểm chạy.
 
 ## Môi trường
 
@@ -13,32 +13,34 @@ Commit nền trước đợt hoàn thiện: `0f7f5cd`
 
 ## Kiểm tra phần mềm
 
-| Thành phần | Lệnh | Kết quả |
+| Thành phần | Lệnh | Kết quả lần rà soát |
 |---|---|---|
-| Backend | `cd backend; npm test` | Đạt: 6 test contract |
+| Backend | `cd backend; npm test` | Đạt: 9 test, bao gồm contract, trạng thái risk và comparator thứ tự status |
 | Backend | `cd backend; npm run build` | Đạt: TypeScript compile |
-| Simulator | `cd simulator; npm test` | Đạt: 2 test kịch bản |
+| Simulator | `cd simulator; npm test` | Đạt: 2 test scenario |
 | Simulator | `cd simulator; npm run check` | Đạt: TypeScript compile |
-| Firmware core | `cd firmware; python -m platformio test -e native` | Đạt: 2 test parser, risk và đầu ra cảnh báo |
-| Firmware ESP32 | `cd firmware; python -m platformio run -e esp32dev` | Đạt: tạo firmware image; RAM 14.4%, flash app slot 64.4% |
+| Firmware core | `cd firmware; python -m platformio test -e native` | Đạt: 5 test cases |
+| Firmware ESP32 | `cd firmware; python -m platformio run -e esp32dev` | Đạt: build; RAM 14.4%, app flash slot 64.4% |
 | Flutter | `cd mobile; flutter analyze` | Đạt: không có lỗi phân tích |
-| Flutter | `cd mobile; flutter test` | Đạt: widget/model/controller tests |
-| Android | `cd mobile; flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000` | Đạt: APK debug build |
+| Flutter | `cd mobile; flutter test` | Đạt: 8 test |
+| Android | `cd mobile; flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000` | APK debug build được; SHA-256 và commit nguồn cần ghi sau lần build cuối |
 
-APK debug đã khởi chạy trên Android emulator. Khi backend không truy cập được, app hiển thị dữ liệu cũ/không xác định và trạng thái liên kết chưa xác minh; không trình bày cấp NORMAL như hiện trạng. Đây là kiểm tra UI offline, không phải kiểm tra kết nối đầu-cuối.
+Sau khi xóa trailing whitespace khỏi các tài liệu trong nhánh, `git diff --check origin/main` đạt ở working tree hiện tại.
 
-## Kiểm tra chưa thực hiện
+## Chưa kiểm tra
 
-- **Luồng simulator → Mosquitto → backend → PostgreSQL → REST/WebSocket → app:** chưa chạy. Docker Engine đang dừng; `com.docker.service` không thể mở từ phiên hiện tại. Vì vậy migration trên DB sạch, chống trùng/late message qua broker thật, application ACK và lỗi ghi DB chưa được xác minh tích hợp.
-- **Thiết bị bench:** `platformio device list` không thấy cổng ESP32. Không có bằng chứng đo A02YYUW, đấu nối/điện áp, LED/còi thật, mất Wi-Fi, reboot khi offline hoặc phát lại outbox trên phần cứng.
-- **Hiệu chuẩn:** chưa có log ba mức × 30 mẫu, giới hạn sai số đã được nhóm duyệt, MAE/max error/độ lệch chuẩn.
-- **Điện thoại thật và LAN:** chưa kiểm tra điện thoại thật truy cập backend qua Wi-Fi; mới build/chạy trên emulator.
-- **Soak và rehearsal:** chưa có log 24 giờ hoặc video rehearsal 5–7 phút.
+- **Simulator → Mosquitto → backend → PostgreSQL → REST/WebSocket → app:** chưa chạy. Docker Linux Engine hiện dừng. Chưa xác minh migration trên DB sạch, DB nâng cấp, status retained/LWT qua broker, ACK sau commit, lỗi ghi DB hay luồng app trực tiếp.
+- **Thứ tự status:** comparator unit test có; chưa có transaction test PostgreSQL/MQTT. Status chỉ được nhận khi boot khớp boot mới nhất đã xác lập bởi telemetry.
+- **Thiết bị bench:** không có cổng ESP32 kết nối. Chưa đo cảm biến, logic UART, nguồn, driver, còi/đèn, mất Wi-Fi, reboot offline, outbox replay hoặc đầy bộ đệm.
+- **Hiệu chuẩn:** chưa có giới hạn sai số được duyệt hay ba mức × 30 mẫu/MAE/max error/độ lệch chuẩn.
+- **Điện thoại thật/LAN:** chưa chạy qua Wi-Fi trên điện thoại thật.
+- **Ổn định/bàn giao:** chưa có soak 24 giờ, p50/p95 từ tối thiểu 30 event, backup/restore, rehearsal 5–7 phút, release APK/hash gắn commit và tag.
 
 ## Mức bằng chứng
 
-- **SIMULATOR VERIFIED:** chưa đạt cho toàn chuỗi; unit/scenario tests đã đạt nhưng luồng có broker/database thật chưa chạy.
-- **BENCH VERIFIED:** chưa đạt; firmware chỉ được compile và kiểm tra native.
-- **FIELD VERIFIED:** chưa đạt và không phải mục tiêu PoC mặc định.
+- **Unit/build verified:** đạt cho các lệnh trong bảng trên.
+- **SIMULATOR VERIFIED:** chưa đạt cho toàn chuỗi broker/database/app.
+- **BENCH VERIFIED:** chưa đạt; mới build firmware và native test.
+- **FIELD VERIFIED:** chưa đạt và không phải mặc định của PoC.
 
-Không dùng kết quả compile/unit test để tuyên bố cảm biến, còi/đèn hoặc hệ thống cảnh báo đã được kiểm chứng thực tế.
+Không dùng compile, unit test hay simulator đơn lẻ để tuyên bố hệ thống/cảm biến/còi/đèn đã được kiểm chứng ngoài đời.

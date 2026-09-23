@@ -1,8 +1,8 @@
 # ADR 002: Kiểm soát thứ tự bản tin trạng thái và chính sách phát hiện lỗi cảm biến
 
-**Ngày:** 23/09/2026  
-**Trạng thái:** Đã chấp thuận (Accepted)  
-**Người đề xuất:** Nhóm phát triển FWA  
+**Ngày:** 23/09/2026
+**Trạng thái:** Đề xuất; cần nhóm xác nhận tại G0/G1
+**Người đề xuất:** Codex, dựa trên rà soát mã nguồn
 
 ---
 
@@ -22,10 +22,9 @@ Trong quá trình rà soát hoàn thiện dự án theo `completion-audit.md`:
   - `latest_status_uptime_ms bigint`: Monotonic uptime của bản tin trạng thái gần nhất trong phiên boot đó.
 - Logic cập nhật trong `saveStatus(v: Status)`:
   - Khóa hàng trạm bằng `SELECT ... FOR UPDATE` để tránh race condition.
-  - Chấp nhận cập nhật nếu:
-    1. Bản tin thuộc phiên khởi động mới (`latest_status_boot_id IS NULL` hoặc khác `v.boot_id`).
-    2. Cùng phiên khởi động và `v.uptime_ms >= latest_status_uptime_ms` (thứ tự tăng dần).
-  - Từ chối/bỏ qua bản tin nếu cùng `boot_id` nhưng `v.uptime_ms < latest_status_uptime_ms` (gói tin cũ đến muộn).
+  - `boot_id` là định danh ngẫu nhiên, không cho biết phiên nào mới hơn. Vì vậy status chỉ được nhận khi `boot_id` trùng `stations.latest_boot_id`, phiên đã được xác lập bởi telemetry.
+  - Trong phiên hiện tại, chỉ nhận `uptime_ms` lớn hơn status đã lưu. Status bị lặp hoặc đến muộn không đổi trạng thái.
+  - Status đến trước telemetry của một boot mới bị bỏ qua; firmware gửi ONLINE định kỳ nên trạng thái được nhận ở heartbeat sau khi telemetry xác lập boot. `link_state` tiếp tục có kiểm tra freshness riêng.
 
 ### 2.2. Chính sách phân định lỗi cảm biến (Sensor Fault Policy)
 - **Vùng mù & ngoài dải đo:** Khung dữ liệu có giá trị $< 30\text{ mm}$ (vùng mù 3cm của A02YYUW) hoặc $> 4500\text{ mm}$ (ngoài dải 4.5m) bị coi là không hợp lệ, tăng bộ đếm `invalid_frames` và không tính vào mực nước.
@@ -37,6 +36,7 @@ Trong quá trình rà soát hoàn thiện dự án theo `completion-audit.md`:
 
 ## 3. Hệ quả & Kiểm thử
 
-- Migration sạch tự động nạp qua `migrate.ts`.
-- Bổ sung kiểm thử tự động trong `contracts.test.ts` (Backend) và `test_main.cpp` (Firmware native).
-- Đóng triệt để rủi ro sai lệch trạng thái kết nối do gói tin đến muộn.
+- Migration runner quét và chạy các file SQL theo thứ tự tên khi gọi `npm run migrate`; chưa có kiểm thử trên PostgreSQL trong môi trường hiện tại.
+- Backend unit test kiểm tra thứ tự boot/uptime bằng hàm thuần; chưa thay thế kiểm thử transaction thật với PostgreSQL/MQTT.
+- Native test firmware kiểm tra frame, timeout và đầu ra; chưa phải bằng chứng bench.
+- Còn phải chạy integration với broker/database để xác nhận retained status, restart, LWT và status cũ đến muộn.

@@ -70,13 +70,13 @@ export class Database implements OnModuleDestroy {
     try {
       await c.query('BEGIN');
       const prior = await c.query(
-        'SELECT latest_status_boot_id, latest_status_uptime_ms FROM stations WHERE id=$1 FOR UPDATE',
+        `SELECT latest_boot_id, latest_status_boot_id, latest_status_uptime_ms
+         FROM stations WHERE id=$1 FOR UPDATE`,
         [v.station_id],
       );
       if (!prior.rowCount) throw new Error('Trạm chưa đăng ký');
       const current = prior.rows[0];
-      const freshBoot = current.latest_status_boot_id === null || current.latest_status_boot_id !== v.boot_id;
-      const isLatest = freshBoot || (BigInt(v.uptime_ms) >= BigInt(current.latest_status_uptime_ms ?? 0));
+      const isLatest = shouldAcceptStatus(v, current);
       if (isLatest) {
         await c.query(
           `UPDATE stations SET last_status=$2, last_status_at=now(),
@@ -116,6 +116,17 @@ export class Database implements OnModuleDestroy {
       ORDER BY received_at DESC,alert_id DESC LIMIT $3`, [stationId ?? null,before ?? null,limit]);
     return r.rows;
   }
+}
+
+export function shouldAcceptStatus(
+  value: Pick<Status, 'boot_id' | 'uptime_ms'>,
+  current: Pick<Record<string, unknown>, 'latest_boot_id' | 'latest_status_boot_id' | 'latest_status_uptime_ms'>,
+) {
+  // boot_id is an opaque identifier, not an ordering token. Accept status only
+  // for the boot already established by telemetry, then order within that boot.
+  if (current.latest_boot_id !== value.boot_id) return false;
+  if (current.latest_status_boot_id !== value.boot_id) return true;
+  return BigInt(value.uptime_ms) > BigInt(String(current.latest_status_uptime_ms ?? 0));
 }
 
 export function presentStation(row: Record<string, unknown>, staleSeconds: number) {

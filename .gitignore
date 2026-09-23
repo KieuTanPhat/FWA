@@ -14,4 +14,4 @@ infra/postgres/data/
 .vscode/
 *.apk
 *.aab
-
+/artifacts/

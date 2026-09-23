@@ -1,6 +1,8 @@
-# Đặc tả yêu cầu Bản đồ cảnh báo lũ & Phân vùng người dùng (FWA Map & Zone Specification)
+# Đề xuất sau PoC: Bản đồ cảnh báo lũ & Phân vùng người dùng
 
-Tài liệu này quy định kiến trúc và yêu cầu kỹ thuật cho tính năng **Bản đồ giám sát ngập lũ**, **Cơ chế chọn vùng sinh sống** và **Quy tắc bố trí cảm biến quan trắc ngoài thực địa**, đảm bảo tuân thủ nguyên tắc thủy văn thực tế, không sáng tạo phi thực tế.
+> **Đề xuất sau PoC, chưa được phê duyệt hoặc triển khai.** P0 chỉ có một trạm; theo kế hoạch, bản đồ nhiều trạm/mini-map là P1 và phải có vị trí đã xác minh. Chọn vùng, lọc cảnh báo theo vùng và mở rộng sang nhiều trạm cần change request. Các địa danh, tọa độ và H0 dưới đây chỉ là ví dụ minh họa, chưa được khảo sát hay xác nhận với đơn vị địa phương; không dùng để lắp đặt, điều hướng hoặc phát cảnh báo thật.
+
+Tài liệu này là bản thảo để xem xét change request sau khi nghiệm thu P0; chưa phải yêu cầu đã duyệt và chưa phải căn cứ kỹ thuật/địa lý để lắp đặt.
 
 ---
 
@@ -81,7 +83,7 @@ Sơ đồ lắp đặt cảm biến siêu âm A02YYUW tại dầm cầu:
                    │  ▲
         Sóng âm    ▼  │ Khoảng cách d (30 - 450 cm)
       ═════════════════════════════════ <- MẶT NƯỚC SÔNG LŨ (Mực nước H = H0 - d)
-      
+
       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       ───────────────────────────────── <- Đáy sông / Lòng dẫn
 ```
