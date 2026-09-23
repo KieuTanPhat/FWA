@@ -14,3 +14,11 @@ Repository bàn giao **hai sản phẩm**: (1) hệ thống IoT cảnh báo lũ 
 | `docs/` | Hợp đồng dữ liệu, quyết định và runbook |
 
 Xem [runbook](docs/runbook.md) để khởi động demo. Dự án là prototype phòng lab; ngưỡng trong cấu hình là **DEMO ONLY** và không dùng để đưa ra quyết định an toàn ngoài thực địa.
+
+## Giao diện ứng dụng
+
+![Tổng quan trạm](mobile-screen.png)
+
+![Sự kiện cảnh báo](mobile-alerts.png)
+
+![Lịch sử mực nước](mobile-history.png)
