@@ -7,6 +7,7 @@
 #include <time.h>
 #include "A02Parser.h"
 #include "AlertOutbox.h"
+#include "LocalAlert.h"
 #include "RiskEngine.h"
 #include "demo_config.h"
 #if __has_include("secrets.h")
@@ -81,7 +82,7 @@ static const char* waterQuality(const RiskSnapshot& risk) {
 }
 
 static const char* health(const RiskSnapshot& risk) {
-  if (!kDemoRisk.valid() || storageFault || outbox.full()) return "FAULT";
+  if (!kDemoRisk.valid() || storageFault || outbox.full() || outbox.lostEvents() > 0) return "FAULT";
   if (risk.validity == RiskValidity::UNKNOWN) return "DEGRADED";
   return "OK";
 }
@@ -94,21 +95,10 @@ static void addQuality(JsonDocument& doc, const RiskSnapshot& risk) {
 }
 
 static void localOutput(const RiskSnapshot& risk, uint32_t now) {
-  bool led = false;
-  bool buzzer = false;
-  if (risk.validity == RiskValidity::UNKNOWN || outbox.full() || storageFault) {
-    led = (now % 1000) < 100;  // Lỗi: một chớp ngắn/giây, còi tắt.
-  } else if (risk.level == RiskLevel::WATCH) {
-    led = (now % 1000) < 500;
-  } else if (risk.level == RiskLevel::WARNING) {
-    led = (now % 500) < 250;
-    buzzer = (now % 2000) < 300;
-  } else if (risk.level == RiskLevel::EMERGENCY) {
-    led = (now % 200) < 100;
-    buzzer = (now % 500) < 250;
-  }
-  digitalWrite(FWA_LED_PIN, led ? HIGH : LOW);
-  digitalWrite(FWA_BUZZER_PIN, buzzer ? HIGH : LOW);
+  const bool systemFault = storageFault || outbox.full() || outbox.lostEvents() > 0;
+  const auto output = localAlertOutput(risk, now, systemFault);
+  digitalWrite(FWA_LED_PIN, output.led_on ? HIGH : LOW);
+  digitalWrite(FWA_BUZZER_PIN, output.buzzer_on ? HIGH : LOW);
 }
 
 static void queueTelemetry(const RiskSnapshot& risk) {

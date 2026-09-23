@@ -18,6 +18,11 @@ bool AlertOutbox::begin() {
     next_order_ = p.getUInt("next", 0);
     p.end();
   }
+  if (ready_) {
+    int occupied = 0;
+    for (int i = 0; i < kSlots; ++i) if (LittleFS.exists(path(i))) ++occupied;
+    full_.store(occupied >= kSlots);
+  }
   return ready_;
 }
 
@@ -37,7 +42,7 @@ bool AlertOutbox::enqueue(const String& payload) {
     if (!LittleFS.exists(path(i))) { slot = i; break; }
   }
   if (slot < 0) {
-    full_ = true;
+    full_.store(true);
     recordLoss();
     xSemaphoreGive(mutex_);
     return false;
@@ -51,6 +56,11 @@ bool AlertOutbox::enqueue(const String& payload) {
   if (ok) ok = LittleFS.rename("/alert-tmp.json", path(slot));
   if (!ok) LittleFS.remove("/alert-tmp.json");
   if (!ok) recordLoss();
+  if (ok) {
+    int occupied = 0;
+    for (int i = 0; i < kSlots; ++i) if (LittleFS.exists(path(i))) ++occupied;
+    full_.store(occupied >= kSlots);
+  }
   xSemaphoreGive(mutex_);
   return ok;
 }
@@ -85,7 +95,11 @@ bool AlertOutbox::ack(const String& alertId) {
     f.close();
     if (!error && doc["alert_id"].as<String>() == alertId) {
       removed = LittleFS.remove(path(i));
-      if (removed) full_ = false;
+      if (removed) {
+        int occupied = 0;
+        for (int slot = 0; slot < kSlots; ++slot) if (LittleFS.exists(path(slot))) ++occupied;
+        full_.store(occupied >= kSlots);
+      }
       break;
     }
   }
