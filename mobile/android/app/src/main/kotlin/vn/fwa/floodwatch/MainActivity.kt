@@ -1,4 +1,4 @@
-package com.example.flood_watch_mobile
+package vn.fwa.floodwatch
 
 import io.flutter.embedding.android.FlutterActivity
 

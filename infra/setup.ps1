@@ -1,12 +1,46 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $envFile = Join-Path $root '.env'
-if (Test-Path -LiteralPath $envFile) { throw '.env đã tồn tại; không ghi đè thông tin đăng nhập.' }
-$db = [guid]::NewGuid().ToString('N')
-$backend = [guid]::NewGuid().ToString('N')
-$sim = [guid]::NewGuid().ToString('N')
-$device = [guid]::NewGuid().ToString('N')
-@"
+$config = Join-Path $PSScriptRoot 'mosquitto'
+$passwdFile = Join-Path $config 'passwd'
+if ((Test-Path -LiteralPath $envFile) -and (Test-Path -LiteralPath $passwdFile)) {
+  Write-Host 'Cấu hình đã tồn tại; giữ nguyên credentials cục bộ.'
+  return
+}
+
+$existing = Test-Path -LiteralPath $envFile
+if ($existing) {
+  $values = @{}
+  Get-Content -LiteralPath $envFile | ForEach-Object {
+    $parts = $_.Split('=', 2)
+    if ($parts.Count -eq 2) { $values[$parts[0]] = $parts[1] }
+  }
+  foreach ($key in @('MQTT_BACKEND_PASSWORD','MQTT_SIM_PASSWORD','MQTT_DEVICE_PASSWORD')) {
+    if (-not $values.ContainsKey($key)) { throw ".env thiếu $key; sửa file trước khi chạy lại." }
+  }
+  $backend = $values['MQTT_BACKEND_PASSWORD']
+  $sim = $values['MQTT_SIM_PASSWORD']
+  $device = $values['MQTT_DEVICE_PASSWORD']
+} else {
+  $db = [guid]::NewGuid().ToString('N')
+  $backend = [guid]::NewGuid().ToString('N')
+  $sim = [guid]::NewGuid().ToString('N')
+  $device = [guid]::NewGuid().ToString('N')
+}
+
+docker info --format '{{.ServerVersion}}' 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Docker engine chưa chạy. Bật Docker Desktop rồi chạy lại.' }
+
+$volume = "${config}:/mosquitto/config"
+docker run --rm -v $volume eclipse-mosquitto:2 mosquitto_passwd -b -c /mosquitto/config/passwd backend $backend
+if ($LASTEXITCODE -ne 0) { throw 'Không tạo được mật khẩu backend cho broker.' }
+docker run --rm -v $volume eclipse-mosquitto:2 mosquitto_passwd -b /mosquitto/config/passwd sim-01 $sim
+if ($LASTEXITCODE -ne 0) { throw 'Không tạo được mật khẩu simulator cho broker.' }
+docker run --rm -v $volume eclipse-mosquitto:2 mosquitto_passwd -b /mosquitto/config/passwd station-01 $device
+if ($LASTEXITCODE -ne 0) { throw 'Không tạo được mật khẩu trạm cho broker.' }
+
+if (-not $existing) {
+  @"
 POSTGRES_DB=fwa
 POSTGRES_USER=fwa
 POSTGRES_PASSWORD=$db
@@ -21,9 +55,5 @@ MQTT_DEVICE_PASSWORD=$device
 PORT=3000
 STALE_AFTER_SECONDS=15
 "@ | Set-Content -LiteralPath $envFile -Encoding utf8
-$config = Join-Path $PSScriptRoot 'mosquitto'
-$volume = "${config}:/mosquitto/config"
-docker run --rm -v $volume eclipse-mosquitto:2 mosquitto_passwd -b -c /mosquitto/config/passwd backend $backend
-docker run --rm -v $volume eclipse-mosquitto:2 mosquitto_passwd -b /mosquitto/config/passwd sim-01 $sim
-docker run --rm -v $volume eclipse-mosquitto:2 mosquitto_passwd -b /mosquitto/config/passwd station-01 $device
+}
 Write-Host 'Đã tạo .env và broker credentials cục bộ. Giữ các file này ngoài Git.'

@@ -65,8 +65,32 @@ export class Database implements OnModuleDestroy {
     return r.rowCount === 1;
   }
 
-  async saveStatus(v: Status) {
-    await this.pool.query('UPDATE stations SET last_status=$2,last_status_at=now() WHERE id=$1', [v.station_id,v.state]);
+  async saveStatus(v: Status): Promise<boolean> {
+    const c = await this.pool.connect();
+    try {
+      await c.query('BEGIN');
+      const prior = await c.query(
+        `SELECT latest_boot_id, latest_status_boot_id, latest_status_uptime_ms
+         FROM stations WHERE id=$1 FOR UPDATE`,
+        [v.station_id],
+      );
+      if (!prior.rowCount) throw new Error('Trạm chưa đăng ký');
+      const current = prior.rows[0];
+      const isLatest = shouldAcceptStatus(v, current);
+      if (isLatest) {
+        await c.query(
+          `UPDATE stations SET last_status=$2, last_status_at=now(),
+           latest_status_boot_id=$3, latest_status_uptime_ms=$4
+           WHERE id=$1`,
+          [v.station_id, v.state, v.boot_id, v.uptime_ms],
+        );
+      }
+      await c.query('COMMIT');
+      return isLatest;
+    } catch (error) {
+      await c.query('ROLLBACK');
+      throw error;
+    } finally { c.release(); }
   }
 
   async stations(staleSeconds: number) {
@@ -94,12 +118,23 @@ export class Database implements OnModuleDestroy {
   }
 }
 
+export function shouldAcceptStatus(
+  value: Pick<Status, 'boot_id' | 'uptime_ms'>,
+  current: Pick<Record<string, unknown>, 'latest_boot_id' | 'latest_status_boot_id' | 'latest_status_uptime_ms'>,
+) {
+  // boot_id is an opaque identifier, not an ordering token. Accept status only
+  // for the boot already established by telemetry, then order within that boot.
+  if (current.latest_boot_id !== value.boot_id) return false;
+  if (current.latest_status_boot_id !== value.boot_id) return true;
+  return BigInt(value.uptime_ms) > BigInt(String(current.latest_status_uptime_ms ?? 0));
+}
+
 export function presentStation(row: Record<string, unknown>, staleSeconds: number) {
   const received = row.received_at ? new Date(String(row.received_at)) : null;
   const fresh = received !== null && Date.now() - received.getTime() <= staleSeconds * 1000;
   const online = row.last_status === 'ONLINE' && row.last_status_at != null &&
     Date.now() - new Date(String(row.last_status_at)).getTime() <= staleSeconds * 2000;
-  const valid = fresh && row.risk_validity === 'VALID' &&
+  const valid = fresh && online && row.risk_validity === 'VALID' &&
     (row.sensor_quality as { water?: string } | null)?.water === 'GOOD';
   return {
     ...row,

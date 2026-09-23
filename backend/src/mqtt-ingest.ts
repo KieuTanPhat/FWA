@@ -52,8 +52,8 @@ export class MqttIngest implements OnModuleInit, OnModuleDestroy {
       } else {
         const value = statusSchema.parse(raw);
         if (value.station_id !== stationId) throw new Error('station_id không khớp topic');
-        await this.db.saveStatus(value);
-        this.stream.publish('station.status', { station_id: stationId, state: value.state });
+        const latest = await this.db.saveStatus(value);
+        if (latest) this.stream.publish('station.status', { station_id: stationId, state: value.state });
       }
     } catch (error) {
       this.logger.warn(`Bỏ bản tin ${topic}: ${error instanceof Error ? error.message : String(error)}`);

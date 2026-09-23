@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS stations (
   latest_boot_id text,
   latest_sequence bigint,
   latest_message_id text,
+  latest_status_boot_id text,
+  latest_status_uptime_ms bigint,
   last_status text NOT NULL DEFAULT 'OFFLINE',
   last_status_at timestamptz
 );

@@ -22,4 +22,4 @@ Chân A02YYUW RX để hở hoặc kéo cao theo chế độ processed. Trước
 
 `python -m platformio test -e native` kiểm tra parser và logic rủi ro. Local output chạy trong vòng đo riêng; tác vụ Wi-Fi/MQTT không quyết định mức cảnh báo. Đèn một chớp ngắn/giây báo sensor/config/outbox lỗi; WATCH chớp chậm; WARNING chớp nhanh và còi ngắt quãng; EMERGENCY chớp/còi nhanh. Khi boot hoặc sensor timeout, risk UNKNOWN và còi lũ tắt, không hiển thị NORMAL như hiện hành.
 
-Outbox LittleFS lưu tối đa 16 alert; chỉ xóa sau ACK của backend. Nếu đầy, không xóa alert cũ; trạm bật báo lỗi và bộ đếm mất event lưu NVS. Đây là giới hạn PoC, cần đo flash endurance và thử brownout trước khi đưa ra hiện trường.
+Outbox LittleFS lưu tối đa 16 alert; chỉ xóa sau ACK của backend. Nếu đầy, không xóa alert cũ; LED báo lỗi bằng ba chớp nhanh mỗi hai giây, còi vẫn theo cấp rủi ro hiện tại, và bộ đếm mất event lưu NVS. Lỗi cảm biến dùng một chớp ngắn mỗi giây và tắt còi lũ. Đây là giới hạn PoC, cần đo flash endurance và thử brownout trước khi đưa ra hiện trường.
