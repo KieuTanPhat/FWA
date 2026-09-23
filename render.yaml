@@ -13,7 +13,7 @@ services:
     region: singapore
     rootDir: backend
     buildCommand: npm ci && npm run build
-    startCommand: npm run migrate && npm start
+    startCommand: npm run migrate && npm run seed:demo && npm start
     healthCheckPath: /healthz
     envVars:
       - key: DATABASE_URL

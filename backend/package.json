@@ -7,6 +7,7 @@
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "migrate": "tsx src/migrate.ts",
+    "seed:demo": "node dist/seed-demo.js",
     "test": "vitest run"
   },
   "dependencies": {
