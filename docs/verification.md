@@ -2,7 +2,7 @@
 
 Ngày: 23/09/2026
 Nhánh: `feat/ung-dung-flutter-theo-doi`
-Phiên bản nguồn: commit `c0a3900` cộng các sửa đổi audit chưa commit tại thời điểm chạy.
+Commit nguồn của APK debug: `6fe96ea` (`Giới hạn bề mặt truy cập API cho ứng dụng Android`).
 
 ## Môi trường
 
@@ -23,7 +23,7 @@ Phiên bản nguồn: commit `c0a3900` cộng các sửa đổi audit chưa comm
 | Firmware ESP32 | `cd firmware; python -m platformio run -e esp32dev` | Đạt: build; RAM 14.4%, app flash slot 64.4% |
 | Flutter | `cd mobile; flutter analyze` | Đạt: không có lỗi phân tích |
 | Flutter | `cd mobile; flutter test` | Đạt: 8 test |
-| Android | `cd mobile; flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000` | APK debug build được; SHA-256 và commit nguồn cần ghi sau lần build cuối |
+| Android | `cd mobile; flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000` | Đạt; APK debug build từ `6fe96ea`, SHA-256 `55E39D344A0D4F500BEC09870D37B6104F70E0D3E522E205F5D18B12CFD1C767` |
 
 Sau khi xóa trailing whitespace khỏi các tài liệu trong nhánh, `git diff --check origin/main` đạt ở working tree hiện tại.
 
