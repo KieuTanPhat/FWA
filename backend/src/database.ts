@@ -26,13 +26,13 @@ export class Database implements OnModuleDestroy {
       const result = await c.query(`INSERT INTO telemetry
         (message_id,station_id,boot_id,sequence,device_ts,time_quality,uptime_ms,water_level_cm,
          rise_rate_cm_min,rain_tick_count,rain_mm_per_tick,temperature_c,risk_level,risk_validity,
-         sensor_quality,device_health,firmware_version,config_version,battery_v,data_origin)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         sensor_quality,device_health,outbox_lost_event_count,firmware_version,config_version,battery_v,data_origin)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
         ON CONFLICT(message_id) DO NOTHING RETURNING message_id`,
         [v.message_id,v.station_id,v.boot_id,v.sequence,v.device_ts,v.time_quality,v.uptime_ms,
           v.water_level_cm,v.rise_rate_cm_min,v.rain_tick_count,v.rain_mm_per_tick,v.temperature_c,
           v.risk_level,v.risk_validity,JSON.stringify(v.sensor_quality),v.device_health,
-          v.firmware_version,v.config_version,v.battery_v,origin],
+          v.outbox_lost_event_count,v.firmware_version,v.config_version,v.battery_v,origin],
       );
       const freshBoot = boot.rowCount === 1;
       const current = prior.rows[0];
@@ -72,7 +72,7 @@ export class Database implements OnModuleDestroy {
   async stations(staleSeconds: number) {
     const r = await this.pool.query(`SELECT s.id,s.name,s.location,s.data_origin,s.last_status,s.last_status_at,
       t.message_id,t.water_level_cm,t.rise_rate_cm_min,t.risk_level,t.risk_validity,
-      t.sensor_quality,t.device_health,t.received_at,t.device_ts,t.time_quality,t.temperature_c,
+      t.sensor_quality,t.device_health,t.outbox_lost_event_count,t.received_at,t.device_ts,t.time_quality,t.temperature_c,
       t.rain_tick_count,t.rain_mm_per_tick,t.firmware_version,t.config_version
       FROM stations s LEFT JOIN telemetry t ON t.message_id=s.latest_message_id ORDER BY s.id`);
     return r.rows.map(row => presentStation(row, staleSeconds));

@@ -1,6 +1,6 @@
 # FWA — Trạm cảnh báo lũ IoT
 
-Hệ thống demo gồm ESP32 đo mực nước và quyết định cảnh báo tại trạm, MQTT chuyển bản tin, backend lưu trạng thái, và ứng dụng Flutter Android chỉ đọc. Dữ liệu từ simulator luôn mang danh tính trạm riêng và được hiển thị là **MÔ PHỎNG**.
+Repository bàn giao **hai sản phẩm**: (1) hệ thống IoT cảnh báo lũ tại trạm là sản phẩm cốt lõi; (2) ứng dụng Flutter Android để quan sát và demo. ESP32 đo mực nước, tự quyết định cảnh báo và điều khiển đèn/còi. MQTT và backend chỉ chuyển/lưu trạng thái cho điện thoại, không quyết định thay trạm. Dữ liệu từ simulator luôn mang danh tính trạm riêng và được hiển thị là **MÔ PHỎNG**.
 
 ## Thành phần
 
@@ -14,4 +14,3 @@ Hệ thống demo gồm ESP32 đo mực nước và quyết định cảnh báo 
 | `docs/` | Hợp đồng dữ liệu, quyết định và runbook |
 
 Xem [runbook](docs/runbook.md) để khởi động demo. Dự án là prototype phòng lab; ngưỡng trong cấu hình là **DEMO ONLY** và không dùng để đưa ra quyết định an toàn ngoài thực địa.
-

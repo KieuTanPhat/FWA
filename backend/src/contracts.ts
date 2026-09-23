@@ -34,6 +34,7 @@ export const telemetrySchema = base.safeExtend({
   risk_level: level.nullable(),
   risk_validity: validity,
   device_health: z.enum(['OK', 'DEGRADED', 'FAULT']),
+  outbox_lost_event_count: z.number().int().nonnegative().safe(),
   battery_v: finite.nonnegative().nullable(),
 }).superRefine((v, ctx) => {
   if (v.message_id !== `${v.station_id}:${v.boot_id}:${v.sequence}`) {
@@ -77,4 +78,3 @@ export const statusSchema = z.object({
 export type Telemetry = z.infer<typeof telemetrySchema>;
 export type Alert = z.infer<typeof alertSchema>;
 export type Status = z.infer<typeof statusSchema>;
-
