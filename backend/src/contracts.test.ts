@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { telemetrySchema } from './contracts';
+import { statusSchema, telemetrySchema } from './contracts';
 import { presentStation } from './database';
 
 const message = {
@@ -42,6 +42,33 @@ describe('telemetry contract', () => {
   });
 });
 
+describe('status contract', () => {
+  it('xác thực payload status hợp lệ', () => {
+    const statusPayload = {
+      schema_version: 1,
+      station_id: 'sim-01',
+      boot_id: 'boot-status-1',
+      state: 'ONLINE',
+      firmware_version: '0.1.0',
+      uptime_ms: 12000,
+      device_health: 'OK',
+    };
+    expect(statusSchema.safeParse(statusPayload).success).toBe(true);
+  });
+  it('từ chối status có uptime_ms âm hoặc sai định dạng', () => {
+    const invalidStatus = {
+      schema_version: 1,
+      station_id: 'sim-01',
+      boot_id: 'boot-status-1',
+      state: 'ONLINE',
+      firmware_version: '0.1.0',
+      uptime_ms: -5,
+      device_health: 'OK',
+    };
+    expect(statusSchema.safeParse(invalidStatus).success).toBe(false);
+  });
+});
+
 describe('effective risk', () => {
   it('không hiển thị NORMAL là hiện hành nếu dữ liệu cũ', () => {
     const row = {
@@ -50,5 +77,12 @@ describe('effective risk', () => {
     };
     expect(presentStation(row, 15).effective_risk_validity).toBe('UNKNOWN');
     expect(presentStation(row, 15).effective_risk_level).toBeNull();
+  });
+  it('không hiển thị NORMAL là hiện hành khi trạm OFFLINE', () => {
+    const row = {
+      last_status: 'OFFLINE', last_status_at: new Date(), received_at: new Date(),
+      risk_level: 'NORMAL', risk_validity: 'VALID', sensor_quality: { water: 'GOOD' },
+    };
+    expect(presentStation(row, 15).effective_risk_validity).toBe('UNKNOWN');
   });
 });

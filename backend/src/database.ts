@@ -65,8 +65,32 @@ export class Database implements OnModuleDestroy {
     return r.rowCount === 1;
   }
 
-  async saveStatus(v: Status) {
-    await this.pool.query('UPDATE stations SET last_status=$2,last_status_at=now() WHERE id=$1', [v.station_id,v.state]);
+  async saveStatus(v: Status): Promise<boolean> {
+    const c = await this.pool.connect();
+    try {
+      await c.query('BEGIN');
+      const prior = await c.query(
+        'SELECT latest_status_boot_id, latest_status_uptime_ms FROM stations WHERE id=$1 FOR UPDATE',
+        [v.station_id],
+      );
+      if (!prior.rowCount) throw new Error('Trạm chưa đăng ký');
+      const current = prior.rows[0];
+      const freshBoot = current.latest_status_boot_id === null || current.latest_status_boot_id !== v.boot_id;
+      const isLatest = freshBoot || (BigInt(v.uptime_ms) >= BigInt(current.latest_status_uptime_ms ?? 0));
+      if (isLatest) {
+        await c.query(
+          `UPDATE stations SET last_status=$2, last_status_at=now(),
+           latest_status_boot_id=$3, latest_status_uptime_ms=$4
+           WHERE id=$1`,
+          [v.station_id, v.state, v.boot_id, v.uptime_ms],
+        );
+      }
+      await c.query('COMMIT');
+      return isLatest;
+    } catch (error) {
+      await c.query('ROLLBACK');
+      throw error;
+    } finally { c.release(); }
   }
 
   async stations(staleSeconds: number) {
@@ -99,7 +123,7 @@ export function presentStation(row: Record<string, unknown>, staleSeconds: numbe
   const fresh = received !== null && Date.now() - received.getTime() <= staleSeconds * 1000;
   const online = row.last_status === 'ONLINE' && row.last_status_at != null &&
     Date.now() - new Date(String(row.last_status_at)).getTime() <= staleSeconds * 2000;
-  const valid = fresh && row.risk_validity === 'VALID' &&
+  const valid = fresh && online && row.risk_validity === 'VALID' &&
     (row.sensor_quality as { water?: string } | null)?.water === 'GOOD';
   return {
     ...row,
