@@ -25,7 +25,7 @@ class HttpFwaRepository implements FwaRepository {
   Future<dynamic> _get(String path) async {
     final response = await _client
         .get(_uri(path))
-        .timeout(const Duration(seconds: 8));
+        .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
       throw Exception('API trả mã ${response.statusCode}');
     }

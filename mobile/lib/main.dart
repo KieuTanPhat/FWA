@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data/fwa_repository.dart';
@@ -8,7 +7,7 @@ import 'ui/fwa_app.dart';
 
 const apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:3000',
+  defaultValue: 'https://fwa-floodwatch-demo.onrender.com',
 );
 
 Future<void> main() async {
@@ -19,28 +18,16 @@ Future<void> main() async {
   } catch (_) {
     // App vẫn mở để người dùng thấy lỗi kết nối nếu bộ nhớ cấu hình lỗi.
   }
-  final configuredUrl = preferences?.getString('api_base_url')?.trim();
-  final initialUrl = configuredUrl == null || configuredUrl.isEmpty
-      ? apiBaseUrl
-      : configuredUrl;
-  final scheme = Uri.tryParse(initialUrl)?.scheme;
-  if (kReleaseMode && scheme != 'https') {
-    runApp(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Text(
-                'Bản phát hành cần API_BASE_URL dùng HTTPS. Hãy cấu hình lại khi build.',
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    return;
+  var configuredUrl = preferences?.getString('api_base_url')?.trim();
+  // Nếu chưa cấu hình hoặc URL cũ là localhost/10.0.2.2 thì tự động dùng Cloud URL
+  if (configuredUrl == null ||
+      configuredUrl.isEmpty ||
+      configuredUrl.contains('10.0.2.2') ||
+      configuredUrl.contains('localhost')) {
+    configuredUrl = apiBaseUrl;
   }
+  final initialUrl = configuredUrl;
+
   final controller = DashboardController(
     HttpFwaRepository(initialUrl),
     saveBaseUrl: (url) async {
