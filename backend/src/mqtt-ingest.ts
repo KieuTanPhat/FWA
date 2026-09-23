@@ -11,6 +11,10 @@ export class MqttIngest implements OnModuleInit, OnModuleDestroy {
   constructor(@Inject(Database) private readonly db: Database, @Inject(Stream) private readonly stream: Stream) {}
 
   onModuleInit() {
+    if (process.env.MQTT_ENABLED === 'false') {
+      this.logger.log('MQTT ingestion đã tắt theo cấu hình (MQTT_ENABLED=false)');
+      return;
+    }
     this.client = mqtt.connect(process.env.MQTT_URL ?? 'mqtt://127.0.0.1:1883', {
       username: process.env.MQTT_BACKEND_USER,
       password: process.env.MQTT_BACKEND_PASSWORD,
@@ -27,7 +31,10 @@ export class MqttIngest implements OnModuleInit, OnModuleDestroy {
     this.client.on('error', error => this.logger.error(error.message));
   }
 
-  async onModuleDestroy() { await new Promise<void>(resolve => this.client?.end(false, {}, () => resolve()) ?? resolve()); }
+  async onModuleDestroy() {
+    if (!this.client) return;
+    await new Promise<void>(resolve => this.client?.end(false, {}, () => resolve()) ?? resolve());
+  }
 
   private async handle(topic: string, payload: Buffer) {
     const match = /^flood\/([a-z0-9-]{1,32})\/(telemetry|alert|status)$/.exec(topic);
