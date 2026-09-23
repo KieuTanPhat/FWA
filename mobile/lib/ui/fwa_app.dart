@@ -2,10 +2,14 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../demo/region_demo.dart';
 import '../models.dart';
+import '../notifications/emergency_notifications.dart';
 import '../state/dashboard_controller.dart';
+import 'emergency_alert_screen.dart';
 import 'region_map_screen.dart';
+import 'water_forecast.dart';
 
 const _navy = Color(0xFF12283D);
 const _teal = Color(0xFF087D75);
@@ -29,11 +33,7 @@ Color riskColor(String? value) => switch (value) {
 
 String timeLabel(DateTime? value) {
   if (value == null) return 'Không có';
-  final offset = value.timeZoneOffset;
-  final sign = offset.isNegative ? '-' : '+';
-  final hours = offset.inHours.abs().toString().padLeft(2, '0');
-  final minutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
-  return '${DateFormat('dd/MM/yyyy HH:mm:ss').format(value)} UTC$sign$hours:$minutes';
+  return DateFormat('dd/MM/yyyy HH:mm:ss').format(value);
 }
 
 String reasonLabel(String value) => switch (value) {
@@ -41,7 +41,7 @@ String reasonLabel(String value) => switch (value) {
   'DEMO_WATER_RECOVERED' => 'Mực nước đã hạ qua ngưỡng hồi phục',
   'SENSOR_TIMEOUT' || 'DEMO_SENSOR_TIMEOUT' => 'Mất tín hiệu cảm biến',
   'SENSOR_RECOVERED' || 'DEMO_SENSOR_RECOVERED' => 'Cảm biến hoạt động lại',
-  _ => value,
+  _ => 'Có thay đổi ở trạm',
 };
 
 class FwaApp extends StatelessWidget {
@@ -98,11 +98,87 @@ class _DashboardState extends State<_Dashboard> {
   int tab = 0;
   String? selectedRegionId;
   String? regionSaveError;
+  StreamSubscription<EmergencyNotice>? _noticeSubscription;
+  final Set<String> _presentedEmergencyIds = <String>{};
 
   @override
   void initState() {
     super.initState();
     selectedRegionId = findDemoRegion(widget.initialRegionId)?.id;
+    _noticeSubscription = EmergencyNotifications.instance.openedNotices.listen(
+      _openEmergencyNotice,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pending = EmergencyNotifications.instance.consumePendingNotice();
+      if (pending != null) _openEmergencyNotice(pending);
+      if (selectedRegionId != null) unawaited(_maybeExplainEmergencyAlerts());
+    });
+  }
+
+  @override
+  void dispose() {
+    _noticeSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _openEmergencyNotice(EmergencyNotice notice) {
+    if (!mounted || !_presentedEmergencyIds.add(notice.alertId)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => EmergencyAlertScreen(notice: notice),
+          fullscreenDialog: true,
+        ),
+      );
+    });
+  }
+
+  Future<void> _maybeExplainEmergencyAlerts() async {
+    final preferences = await SharedPreferences.getInstance();
+    const key = 'fwa_emergency_permission_explained_v1';
+    if (preferences.getBool(key) == true || !mounted) return;
+    await preferences.setBool(key, true);
+    if (!mounted) return;
+    final enable = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(
+          Icons.notifications_active_outlined,
+          color: Color(0xFFB22632),
+        ),
+        title: const Text('Bật cảnh báo khẩn cấp'),
+        content: const Text(
+          'Khi cảm biến mô phỏng báo mức khẩn cấp, điện thoại có thể bật màn hình, rung và phát âm thanh. Hãy cho phép thông báo; trên một số máy Android cần bật thêm thông báo toàn màn hình trong Cài đặt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Để sau'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Thiết lập'),
+          ),
+        ],
+      ),
+    );
+    if (enable == true) await _enableEmergencyAlerts();
+  }
+
+  Future<void> _enableEmergencyAlerts() async {
+    final ready = await EmergencyNotifications.instance.requestPermissions();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ready
+              ? 'Đã bật thông báo khẩn cấp.'
+              : 'Hãy cho phép thông báo và quyền mở toàn màn hình trong Cài đặt ứng dụng.',
+        ),
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   Future<void> _selectRegion(String id) async {
@@ -129,25 +205,7 @@ class _DashboardState extends State<_Dashboard> {
       regionSaveError = null;
     });
     widget.controller.selectStation(region.sensors.single.stationId);
-  }
-
-  Future<void> _updateDemoControl(Map<String, dynamic> patch) async {
-    try {
-      await widget.controller.updateDemoControl(patch);
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Không đồng bộ được cảm biến: $error')),
-        );
-      }
-    }
-  }
-
-  Future<void> _editApiBaseUrl(BuildContext context) async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _ApiUrlDialog(controller: widget.controller),
-    );
+    unawaited(_maybeExplainEmergencyAlerts());
   }
 
   @override
@@ -165,37 +223,62 @@ class _DashboardState extends State<_Dashboard> {
       if (incomingAlert != null &&
           region?.sensors.single.stationId == incomingAlert.stationId) {
         final sensorName = region?.sensors.single.name ?? 'cảm biến';
-        final isRecovery =
-            incomingAlert.reasonCodes.contains('DEMO_WATER_RECOVERED') ||
-            (incomingAlert.currentLevel == 'NORMAL' &&
-                incomingAlert.previousLevel != 'NORMAL');
-        final message = isRecovery
-            ? 'Mực nước đã hạ dưới ngưỡng · $sensorName'
-            : 'Cảnh báo ${riskLabel(incomingAlert.currentLevel)} · $sensorName';
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final messenger = ScaffoldMessenger.of(context);
-          messenger.hideCurrentSnackBar();
-          messenger.showSnackBar(
-            SnackBar(
-              backgroundColor: riskColor(incomingAlert.currentLevel),
-              content: Text(message),
-            ),
+        if (incomingAlert.currentLevel == 'EMERGENCY' &&
+            station != null &&
+            station.effectiveRisk == 'EMERGENCY') {
+          final notice = EmergencyNotice.fromStationAlert(
+            incomingAlert,
+            station,
+            sensorName,
+            region!.administrativeArea,
           );
-        });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            unawaited(EmergencyNotifications.instance.showEmergency(notice));
+            _openEmergencyNotice(notice);
+          });
+        } else {
+          final isRecovery =
+              incomingAlert.reasonCodes.contains('DEMO_WATER_RECOVERED') ||
+              (incomingAlert.currentLevel == 'NORMAL' &&
+                  incomingAlert.previousLevel != 'NORMAL');
+          final message = isRecovery
+              ? 'Mực nước đã hạ dưới ngưỡng · $sensorName'
+              : 'Cảnh báo ${riskLabel(incomingAlert.currentLevel)} · $sensorName';
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.hideCurrentSnackBar();
+            messenger.showSnackBar(
+              SnackBar(
+                backgroundColor: riskColor(incomingAlert.currentLevel),
+                content: Text(message),
+              ),
+            );
+          });
+        }
       }
       return Scaffold(
         appBar: AppBar(
-          title: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          title: Row(
             children: [
-              Text(
-                'FWA',
-                style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: 2),
-              ),
-              Text(
-                'CẢNH BÁO LŨ IoT',
-                style: TextStyle(fontSize: 11, letterSpacing: 1.2),
+              Image.asset('assets/images/fwa_logo.webp', width: 38, height: 38),
+              const SizedBox(width: 9),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'FWA',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  Text(
+                    'CẢNH BÁO LŨ',
+                    style: TextStyle(fontSize: 11, letterSpacing: 1.2),
+                  ),
+                ],
               ),
             ],
           ),
@@ -204,11 +287,6 @@ class _DashboardState extends State<_Dashboard> {
               onPressed: () => state.refresh(),
               icon: const Icon(Icons.refresh),
               tooltip: 'Tải lại',
-            ),
-            IconButton(
-              onPressed: () => _editApiBaseUrl(context),
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: 'Cấu hình địa chỉ API',
             ),
           ],
         ),
@@ -221,10 +299,8 @@ class _DashboardState extends State<_Dashboard> {
             ? RegionMapScreen(
                 region: region,
                 station: station,
-                control: state.demoControl,
                 error: state.error,
                 onRegionChanged: (id) => unawaited(_selectRegion(id)),
-                onControlPatch: _updateDemoControl,
               )
             : RefreshIndicator(
                 onRefresh: state.refresh,
@@ -254,14 +330,14 @@ class _DashboardState extends State<_Dashboard> {
                     if (!state.loading && state.stations.isEmpty)
                       const _Banner(
                         icon: Icons.sensors_off,
-                        text: 'Chưa có trạm hoặc không kết nối được API.',
+                        text:
+                            'Chưa tải được số liệu. Hãy kiểm tra kết nối Internet rồi thử lại.',
                         color: _navy,
                       ),
                     if (state.stations.isNotEmpty && station == null)
                       const _Banner(
                         icon: Icons.sensors_off,
-                        text:
-                            'Cảm biến của khu vực này chưa có dữ liệu trên máy chủ.',
+                        text: 'Chưa có số đo mới cho khu vực này.',
                         color: _navy,
                       ),
                     if (station != null) ...[
@@ -271,12 +347,12 @@ class _DashboardState extends State<_Dashboard> {
                         _Overview(
                           station: station,
                           apiReachable: state.error == null,
+                          onEnableEmergencyAlerts: _enableEmergencyAlerts,
                         ),
                       if (tab == 2)
                         _History(points: state.history, station: station),
                       if (tab == 3)
                         _Alerts(alerts: state.alerts, station: station),
-                      if (tab == 4) _Connection(state: state, station: station),
                     ],
                   ],
                 ),
@@ -306,10 +382,6 @@ class _DashboardState extends State<_Dashboard> {
                     selectedIcon: Icon(Icons.notifications),
                     label: 'Sự kiện',
                   ),
-                  NavigationDestination(
-                    icon: Icon(Icons.settings_ethernet),
-                    label: 'Kết nối',
-                  ),
                 ],
               ),
       );
@@ -328,7 +400,13 @@ class _RegionOnboarding extends StatelessWidget {
     child: ListView(
       padding: const EdgeInsets.fromLTRB(18, 28, 18, 28),
       children: [
-        const Icon(Icons.flood_outlined, color: _teal, size: 46),
+        Center(
+          child: Image.asset(
+            'assets/images/fwa_logo.webp',
+            width: 112,
+            height: 112,
+          ),
+        ),
         const SizedBox(height: 14),
         const Text(
           'Chọn khu vực quan tâm',
@@ -408,7 +486,7 @@ class _RegionOnboarding extends StatelessWidget {
         ],
         const SizedBox(height: 8),
         const Text(
-          'Chọn vùng để bật màn hình đo và nhận thông báo trong ứng dụng. Mọi số đo trong project hiện tại đều là mô phỏng.',
+          'Chọn khu vực để xem số đo và nhận thông báo. Các số liệu trong bài trình diễn đều được mô phỏng.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Color(0xFF7C8A93), fontSize: 11),
         ),
@@ -482,76 +560,6 @@ class _RegionSelectionCard extends StatelessWidget {
   );
 }
 
-class _ApiUrlDialog extends StatefulWidget {
-  const _ApiUrlDialog({required this.controller});
-  final DashboardController controller;
-
-  @override
-  State<_ApiUrlDialog> createState() => _ApiUrlDialogState();
-}
-
-class _ApiUrlDialogState extends State<_ApiUrlDialog> {
-  late final TextEditingController input;
-  String? error;
-  bool saving = false;
-
-  @override
-  void initState() {
-    super.initState();
-    input = TextEditingController(text: widget.controller.repository.baseUrl);
-  }
-
-  @override
-  void dispose() {
-    input.dispose();
-    super.dispose();
-  }
-
-  Future<void> save() async {
-    if (saving) return;
-    setState(() => saving = true);
-    final problem = await widget.controller.changeBaseUrl(input.text);
-    if (!mounted) return;
-    if (problem != null) {
-      setState(() {
-        error = problem;
-        saving = false;
-      });
-    } else {
-      Navigator.of(context).pop();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Địa chỉ backend'),
-    content: TextField(
-      controller: input,
-      enabled: !saving,
-      keyboardType: TextInputType.url,
-      autocorrect: false,
-      onChanged: (_) {
-        if (error != null) setState(() => error = null);
-      },
-      decoration: InputDecoration(
-        labelText: 'URL API',
-        hintText: 'http://192.168.1.10:3000',
-        errorText: error,
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: saving ? null : () => Navigator.of(context).pop(),
-        child: const Text('Hủy'),
-      ),
-      FilledButton(
-        onPressed: saving ? null : save,
-        child: Text(saving ? 'Đang lưu…' : 'Lưu và kết nối'),
-      ),
-    ],
-  );
-}
-
 class _OriginHeader extends StatelessWidget {
   const _OriginHeader({required this.station});
   final Station station;
@@ -571,7 +579,7 @@ class _OriginHeader extends StatelessWidget {
             ),
           ),
           _Badge(
-            label: station.isSimulated ? 'MÔ PHỎNG' : 'THIẾT BỊ THẬT',
+            label: station.isSimulated ? 'TRẠM MÔ PHỎNG' : 'TRẠM THẬT',
             icon: station.isSimulated ? Icons.science_outlined : Icons.memory,
             color: station.isSimulated ? const Color(0xFFAB5A1B) : _teal,
           ),
@@ -584,9 +592,14 @@ class _OriginHeader extends StatelessWidget {
 }
 
 class _Overview extends StatelessWidget {
-  const _Overview({required this.station, required this.apiReachable});
+  const _Overview({
+    required this.station,
+    required this.apiReachable,
+    required this.onEnableEmergencyAlerts,
+  });
   final Station station;
   final bool apiReachable;
+  final VoidCallback onEnableEmergencyAlerts;
   @override
   Widget build(BuildContext context) {
     final effective = apiReachable ? station.effectiveRisk : null;
@@ -664,10 +677,10 @@ class _Overview extends StatelessWidget {
             ),
             _Badge(
               label: !apiReachable
-                  ? 'LIÊN KẾT CHƯA XÁC MINH'
+                  ? 'CHƯA TẢI ĐƯỢC SỐ LIỆU'
                   : station.isOnline
-                  ? 'TRẠM ONLINE'
-                  : 'TRẠM OFFLINE',
+                  ? 'TRẠM ĐANG HOẠT ĐỘNG'
+                  : 'MẤT KẾT NỐI',
               icon: apiReachable && station.isOnline
                   ? Icons.link
                   : Icons.link_off,
@@ -676,8 +689,9 @@ class _Overview extends StatelessWidget {
                   : const Color(0xFF9A5A25),
             ),
             _Badge(
-              label:
-                  '${stale ? 'CHẤT LƯỢNG CUỐI' : 'CẢM BIẾN'} ${station.sensorQuality['water'] ?? 'UNKNOWN'}',
+              label: !stale && station.sensorQuality['water'] == 'GOOD'
+                  ? 'CẢM BIẾN HOẠT ĐỘNG TỐT'
+                  : 'CẦN KIỂM TRA SỐ ĐO',
               icon: Icons.sensors,
               color: !stale && station.sensorQuality['water'] == 'GOOD'
                   ? _teal
@@ -706,7 +720,7 @@ class _Overview extends StatelessWidget {
               children: [
                 _Metric(
                   width: width,
-                  title: 'Mực nước',
+                  title: 'Mực nước hiện tại',
                   value: station.waterLevelCm == null
                       ? '—'
                       : '${station.waterLevelCm!.toStringAsFixed(1)} cm',
@@ -714,15 +728,7 @@ class _Overview extends StatelessWidget {
                 ),
                 _Metric(
                   width: width,
-                  title: 'Khoảng cách siêu âm',
-                  value: station.distanceCm == null
-                      ? '—'
-                      : '${station.distanceCm!.toStringAsFixed(1)} cm',
-                  icon: Icons.sensors,
-                ),
-                _Metric(
-                  width: width,
-                  title: 'Tốc độ dâng',
+                  title: 'Tốc độ thay đổi',
                   value: station.riseRateCmMin == null
                       ? '—'
                       : '${station.riseRateCmMin!.toStringAsFixed(1)} cm/phút',
@@ -730,8 +736,10 @@ class _Overview extends StatelessWidget {
                 ),
                 _Metric(
                   width: width,
-                  title: 'Xung mưa',
-                  value: station.rainTickCount?.toString() ?? '—',
+                  title: 'Lượng mưa',
+                  value: station.rainTickCount == null
+                      ? '—'
+                      : '${(station.rainTickCount! * 0.2).toStringAsFixed(1)} mm',
                   icon: Icons.grain,
                 ),
                 _Metric(
@@ -747,6 +755,34 @@ class _Overview extends StatelessWidget {
           },
         ),
         const SizedBox(height: 14),
+        WaterForecast(station: station),
+        const SizedBox(height: 14),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.notifications_active_outlined,
+                  color: Color(0xFFB22632),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Cho phép thông báo để nhận cảnh báo khẩn cấp khi màn hình đang tắt.',
+                    style: TextStyle(color: _navy, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: onEnableEmergencyAlerts,
+                  child: const Text('Bật'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -754,21 +790,16 @@ class _Overview extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Thời gian & tình trạng trạm',
+                  'Cập nhật số đo',
                   style: TextStyle(fontWeight: FontWeight.w800, color: _navy),
                 ),
                 const SizedBox(height: 8),
-                _Line('Backend nhận', timeLabel(station.receivedAt)),
+                _Line('Nhận số đo lúc', timeLabel(station.receivedAt)),
                 _Line(
-                  'Thiết bị đo',
-                  station.timeQuality == 'UNSYNCED'
-                      ? 'Đồng hồ chưa đồng bộ'
-                      : timeLabel(station.deviceTs),
-                ),
-                _Line('Sức khỏe thiết bị', station.deviceHealth ?? 'Chưa có'),
-                _Line(
-                  'Sự kiện mất ở outbox',
-                  station.outboxLostEventCount?.toString() ?? 'Chưa có',
+                  'Tình trạng',
+                  station.isFresh && station.isOnline
+                      ? 'Đang cập nhật'
+                      : 'Đây là lần ghi nhận gần nhất',
                 ),
               ],
             ),
@@ -778,7 +809,7 @@ class _Overview extends StatelessWidget {
         const _Banner(
           icon: Icons.campaign_outlined,
           text:
-              'Còi và đèn cảnh báo do ESP32 điều khiển tại trạm. Ứng dụng chỉ theo dõi, không gửi lệnh điều khiển.',
+              'Ứng dụng chỉ theo dõi và gửi thông báo khi có thay đổi mức cảnh báo. Bạn không thể chỉnh số đo trong ứng dụng.',
           color: _teal,
         ),
       ],
@@ -806,7 +837,7 @@ class _History extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         const Text(
-          '100 mẫu gần nhất theo thời gian backend nhận',
+          '100 lần đo gần đây',
           style: TextStyle(color: Color(0xFF61717F)),
         ),
         const SizedBox(height: 12),
@@ -940,7 +971,7 @@ class _Alerts extends StatelessWidget {
       ),
       const SizedBox(height: 4),
       const Text(
-        'Sự kiện lưu trên server, không xóa mức rủi ro của trạm.',
+        'Các cảnh báo đã ghi nhận cho khu vực đang chọn.',
         style: TextStyle(color: Color(0xFF61717F)),
       ),
       const SizedBox(height: 12),
@@ -994,73 +1025,13 @@ class _Alerts extends StatelessWidget {
                   style: const TextStyle(color: Color(0xFF536675)),
                 ),
                 const SizedBox(height: 8),
-                _Line('Server nhận', timeLabel(event.receivedAt)),
-                _Line('Thiết bị đo', timeLabel(event.deviceTs)),
+                _Line('Ghi nhận lúc', timeLabel(event.receivedAt)),
+                if (event.deviceTs != null)
+                  _Line('Thời gian trên thiết bị', timeLabel(event.deviceTs)),
               ],
             ),
           ),
         ),
-      ),
-    ],
-  );
-}
-
-class _Connection extends StatelessWidget {
-  const _Connection({required this.state, required this.station});
-  final DashboardController state;
-  final Station station;
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        'Kết nối & trợ giúp',
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w800,
-          color: _navy,
-        ),
-      ),
-      const SizedBox(height: 12),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _Line('API', state.repository.baseUrl),
-              _Line(
-                'Cập nhật trực tiếp',
-                state.streamOnline
-                    ? 'WebSocket đang kết nối'
-                    : 'WebSocket mất kết nối; REST vẫn thử tải lại',
-              ),
-              _Line('Đồng bộ cuối', timeLabel(state.lastSync)),
-              if (state.errorDetails != null)
-                _Line('Chi tiết lỗi', state.errorDetails!),
-              _Line('Mã trạm', station.id),
-              _Line('Firmware', station.firmwareVersion ?? 'Chưa có'),
-              _Line('Cấu hình', station.configVersion ?? 'Chưa có'),
-              _Line(
-                'Nguồn',
-                station.isSimulated ? 'MÔ PHỎNG' : 'THIẾT BỊ THẬT',
-              ),
-            ],
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-      const _Banner(
-        icon: Icons.info_outline,
-        text:
-            'Điện thoại thật phải dùng IP LAN của máy chạy backend. Android emulator dùng 10.0.2.2. Bản debug cho phép HTTP trong LAN demo; bản phát hành yêu cầu HTTPS.',
-        color: _teal,
-      ),
-      const SizedBox(height: 10),
-      const _Banner(
-        icon: Icons.shield_outlined,
-        text:
-            'Khi trạm mất uplink, ứng dụng không thể nhận cảnh báo mới. Hãy nhìn còi/đèn tại trạm; dữ liệu cũ trong app không được coi là hiện trạng.',
-        color: Color(0xFF9A5A25),
       ),
     ],
   );

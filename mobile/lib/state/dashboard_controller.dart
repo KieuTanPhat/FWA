@@ -19,9 +19,10 @@ class DashboardController extends ChangeNotifier {
   List<Station> stations = const [];
   List<TelemetryPoint> history = const [];
   List<AlertEvent> alerts = const [];
-  DemoControl? demoControl;
   AlertEvent? incomingAlert;
   String? _pendingLiveAlertId;
+  String? _alertsStationId;
+  final Set<String> _seenAlertIds = <String>{};
   String? selectedId;
   String? error;
   String? errorDetails;
@@ -57,9 +58,10 @@ class DashboardController extends ChangeNotifier {
     selectedId = id;
     history = const [];
     alerts = const [];
-    demoControl = null;
     incomingAlert = null;
     _pendingLiveAlertId = null;
+    _alertsStationId = null;
+    _seenAlertIds.clear();
     notifyListeners();
     unawaited(refresh());
   }
@@ -98,7 +100,6 @@ class DashboardController extends ChangeNotifier {
     stations = const [];
     history = const [];
     alerts = const [];
-    demoControl = null;
     incomingAlert = null;
     loading = true;
     error = null;
@@ -147,13 +148,6 @@ class DashboardController extends ChangeNotifier {
           repository.telemetry(selectedId!),
           repository.alerts(selectedId!),
         ];
-        final controlRepository = repository is DemoControlRepository
-            ? repository as DemoControlRepository
-            : null;
-        final controlIndex = controlRepository == null ? -1 : requests.length;
-        if (controlRepository != null) {
-          requests.add(controlRepository.demoControl(selectedId!));
-        }
         final results = await Future.wait(requests);
         if (generation != _configGeneration) {
           _pending = true;
@@ -161,29 +155,61 @@ class DashboardController extends ChangeNotifier {
         }
         history = results[0] as List<TelemetryPoint>;
         alerts = results[1] as List<AlertEvent>;
-        if (controlIndex >= 0) {
-          demoControl = results[controlIndex] as DemoControl;
+        final currentStation = stations
+            .where((station) => station.id == selectedId)
+            .firstOrNull;
+        if (_alertsStationId != selectedId) {
+          _alertsStationId = selectedId;
+          _seenAlertIds
+            ..clear()
+            ..addAll(
+              alerts.map((alert) => alert.id).where((id) => id.isNotEmpty),
+            );
+          if (currentStation?.effectiveRisk == 'EMERGENCY') {
+            incomingAlert = alerts
+                .where(
+                  (alert) =>
+                      alert.currentLevel == 'EMERGENCY' && alert.id.isNotEmpty,
+                )
+                .firstOrNull;
+          }
         }
         final pendingId = _pendingLiveAlertId;
         if (pendingId != null) {
           for (final alert in alerts) {
             if (alert.id == pendingId && alert.stationId == selectedId) {
               incomingAlert = alert;
+              _seenAlertIds.add(alert.id);
               break;
             }
           }
           _pendingLiveAlertId = null;
         }
+        if (incomingAlert == null) {
+          final unseen =
+              alerts
+                  .where(
+                    (alert) =>
+                        alert.id.isNotEmpty &&
+                        !_seenAlertIds.contains(alert.id),
+                  )
+                  .toList()
+                ..sort((a, b) => b.receivedAt.compareTo(a.receivedAt));
+          if (unseen.isNotEmpty) incomingAlert = unseen.first;
+        }
+        _seenAlertIds.addAll(
+          alerts.map((alert) => alert.id).where((id) => id.isNotEmpty),
+        );
       } else if (requireRegionSelection) {
         history = const [];
         alerts = const [];
-        demoControl = null;
       }
       error = null;
       errorDetails = null;
       lastSync = DateTime.now();
     } catch (e) {
-      error = 'Không tải được dữ liệu. Kiểm tra địa chỉ API và kết nối LAN.';
+      error =
+          'Không tải được số liệu. Hãy kiểm tra kết nối Internet rồi thử lại.';
       errorDetails = '$e';
     } finally {
       loading = false;
@@ -194,21 +220,6 @@ class DashboardController extends ChangeNotifier {
         unawaited(refresh());
       }
     }
-  }
-
-  Future<void> updateDemoControl(Map<String, dynamic> patch) async {
-    final id = selectedId;
-    final controlRepository = repository is DemoControlRepository
-        ? repository as DemoControlRepository
-        : null;
-    if (id == null || controlRepository == null) {
-      throw StateError(
-        'Cảm biến mô phỏng chưa được chọn hoặc API chưa hỗ trợ điều khiển.',
-      );
-    }
-    demoControl = await controlRepository.updateDemoControl(id, patch);
-    notifyListeners();
-    await refresh();
   }
 
   AlertEvent? consumeIncomingAlert() {
