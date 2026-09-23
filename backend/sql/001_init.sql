@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS telemetry (
   risk_validity text NOT NULL,
   sensor_quality jsonb NOT NULL,
   device_health text NOT NULL,
+  outbox_lost_event_count bigint NOT NULL DEFAULT 0,
   firmware_version text NOT NULL,
   config_version text NOT NULL,
   battery_v double precision,
@@ -65,4 +66,3 @@ INSERT INTO stations(id,name,location,data_origin) VALUES
   ('sim-01','Trạm mô phỏng','Mô hình phòng lab','SIMULATED'),
   ('station-01','Trạm cảm biến','Vị trí lắp đặt cần hiệu chuẩn','PHYSICAL')
 ON CONFLICT (id) DO NOTHING;
-

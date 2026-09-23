@@ -20,6 +20,7 @@ const message = {
   risk_validity: 'VALID',
   sensor_quality: { water: 'GOOD', rain: 'GOOD', temperature: 'UNKNOWN' },
   device_health: 'OK',
+  outbox_lost_event_count: 0,
   firmware_version: 'demo-1',
   config_version: 'demo-1',
   battery_v: null,
@@ -51,4 +52,3 @@ describe('effective risk', () => {
     expect(presentStation(row, 15).effective_risk_level).toBeNull();
   });
 });
-
