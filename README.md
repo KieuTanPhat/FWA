@@ -1,6 +1,6 @@
 # FWA — Trạm cảnh báo lũ IoT
 
-Repository bàn giao **hai sản phẩm**: (1) hệ thống IoT cảnh báo lũ tại trạm là sản phẩm cốt lõi; (2) ứng dụng Flutter Android để quan sát và demo. ESP32 đo mực nước, tự quyết định cảnh báo và điều khiển đèn/còi. MQTT và backend chỉ chuyển/lưu trạng thái cho điện thoại, không quyết định thay trạm. Dữ liệu từ simulator luôn mang danh tính trạm riêng và được hiển thị là **MÔ PHỎNG**.
+FWA gồm firmware trạm IoT, web điều khiển mô phỏng và ứng dụng Flutter Android. Trạm ESP32 chạy logic cảnh báo cục bộ; backend nhận và lưu dữ liệu, đồng bộ cho web/app qua REST và WebSocket. Bản web hiện là mô hình server-side theo sơ đồ Wokwi, không giả làm thiết bị lắp ngoài thực địa. Toàn bộ ba vùng demo mang danh tính **MÔ PHỎNG** riêng.
 
 ## Thành phần
 
@@ -8,7 +8,8 @@ Repository bàn giao **hai sản phẩm**: (1) hệ thống IoT cảnh báo lũ 
 |---|---|
 | `firmware/` | ESP32, cảm biến A02YYUW, state machine và còi/đèn cục bộ |
 | `backend/` | NestJS, MQTT, PostgreSQL, REST và WebSocket |
-| `mobile/` | Flutter Android: trạm, số đo, lịch sử và sự kiện |
+| `backend/public/` | Web IoT: sơ đồ SVG tương tác, điều khiển kịch bản và nhật ký |
+| `mobile/` | Flutter Android: bắt buộc chọn vùng, bản đồ, số đo, lịch sử và sự kiện |
 | `simulator/` | Kịch bản demo lặp lại được |
 | `infra/` | Docker Compose, Mosquitto ACL và PostgreSQL |
 | `docs/` | Hợp đồng dữ liệu, quyết định và runbook |
@@ -17,9 +18,9 @@ Xem [runbook](docs/runbook.md) để khởi động demo. Dự án là prototype
 
 ## Giao diện ứng dụng
 
-Ứng dụng có tab **Bản đồ** cho demo IoT tại ba lưu vực: Thao–Chảy, Hương–Bồ và Vu Gia–Thu Bồn. Mỗi pin và số đo đều là dữ liệu mô phỏng theo cảm biến của project; tọa độ là điểm tham khảo, không xác nhận vị trí cảm biến đã lắp ngoài thực địa. Bản đồ nền OpenStreetMap tải qua mạng khi mở tab, không đóng gói tile vào APK.
+Mở web tại `/iot`. Sơ đồ SVG lấy trực tiếp danh sách linh kiện và dây nối từ `backend/public/diagram.json`, bản triển khai đi cùng `diagram.json` của project. Có một cảm biến mô phỏng cho mỗi lưu vực: `sim-01` Thao–Chảy, `sim-02` Hương–Bồ, `sim-03` Vu Gia–Thu Bồn. Số đo mặc định lưu mỗi 5 giây vào PostgreSQL; WebSocket đồng bộ web/app, REST trả lịch sử. Web cho phép đổi mực nước, tốc độ mô phỏng, mưa, nhiệt độ, ngưỡng mực nước và ngưỡng tốc độ dâng. Tốc độ cm/phút được quy đổi theo chu kỳ 5 giây. Ngưỡng tốc độ mặc định 5/10/15 cm/phút; cần 3 mẫu để nâng cấp, hysteresis 5 cm và 4 mẫu để hạ cấp theo cấu hình firmware.
 
-Kịch bản nước dâng cập nhật mỗi 2 giây (tương đương 1 phút mô phỏng), tăng 0,5 cm/phút mô phỏng. Các mức demo lấy theo firmware: 30/50/70 cm; cần 3 mẫu liên tiếp để nâng cấp cảnh báo, có hysteresis 5 cm và 4 mẫu để hạ cấp. Mỗi mức chỉ phát thông báo một lần trong một lượt mô phỏng; **đây không phải cảnh báo thực tế**.
+Trong app người dùng phải chọn một vùng khi mở lần đầu; bản đồ, nhật ký và thông báo trong app chỉ theo cảm biến của vùng đã chọn. Điều chỉnh mực nước hoặc ghi nhịp mưa từ app đi vào cùng backend nên cũng hiện trên web. Ba mức mặc định là 30/50/70 cm; cần 3 mẫu để nâng cấp, hysteresis 5 cm và 4 mẫu để hạ cấp. Tọa độ bản đồ là vị trí tham khảo. Đây là dữ liệu mô phỏng, không phải cảnh báo thực tế.
 
 Để tạo APK release nhỏ theo kiến trúc thiết bị, chạy trong `mobile/`:
 

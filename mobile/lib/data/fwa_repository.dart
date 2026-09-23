@@ -13,7 +13,15 @@ abstract class FwaRepository {
   void close();
 }
 
-class HttpFwaRepository implements FwaRepository {
+abstract interface class DemoControlRepository {
+  Future<DemoControl> demoControl(String stationId);
+  Future<DemoControl> updateDemoControl(
+    String stationId,
+    Map<String, dynamic> patch,
+  );
+}
+
+class HttpFwaRepository implements FwaRepository, DemoControlRepository {
   HttpFwaRepository(this.baseUrl, {http.Client? client})
     : _client = client ?? http.Client();
   @override
@@ -56,6 +64,36 @@ class HttpFwaRepository implements FwaRepository {
     return data
         .map((value) => AlertEvent.fromJson(value as Map<String, dynamic>))
         .toList();
+  }
+
+  @override
+  Future<DemoControl> demoControl(String stationId) async {
+    final id = Uri.encodeComponent(stationId);
+    final data = await _get('/api/v1/demo/stations/$id/control');
+    return DemoControl.fromJson(data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<DemoControl> updateDemoControl(
+    String stationId,
+    Map<String, dynamic> patch,
+  ) async {
+    final id = Uri.encodeComponent(stationId);
+    final response = await _client
+        .patch(
+          _uri('/api/v1/demo/stations/$id/control'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode(patch),
+        )
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final message = body is Map ? body['message'] : null;
+      throw Exception(message ?? 'API trả mã ${response.statusCode}');
+    }
+    return DemoControl.fromJson(
+      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>,
+    );
   }
 
   @override

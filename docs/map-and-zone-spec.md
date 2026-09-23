@@ -1,6 +1,6 @@
 # Bản đồ cảnh báo lũ & Phân vùng người dùng
 
-> **Cập nhật 2026-09:** Đã triển khai tab bản đồ demo trong ứng dụng Flutter theo yêu cầu môn học IoT. Demo hiện có ba lựa chọn lưu vực (Thao–Chảy, Hương–Bồ, Vu Gia–Thu Bồn), các pin tham khảo, số đo giả lập, ngưỡng 30/50/70 cm và thông báo trong ứng dụng. Giá trị và tọa độ không đến từ cảm biến thật; không dùng để lắp đặt, điều hướng hoặc phát cảnh báo ngoài thực địa. Phần dưới đây giữ lại đề xuất mở rộng sản phẩm sau PoC; các yêu cầu mở rộng đó chưa được triển khai.
+> **Cập nhật 2026-09:** Đã triển khai web sơ đồ IoT, backend simulator dùng chung và tab bản đồ Flutter. Có đúng một cảm biến mô phỏng cho mỗi lưu vực (Thao–Chảy, Hương–Bồ, Vu Gia–Thu Bồn); người dùng phải chọn vùng trước khi xem số đo/nhận thông báo trong app. Web/app cùng đọc và sửa một cấu hình server-side; mẫu và alert được lưu trong PostgreSQL. Sơ đồ web lấy linh kiện/dây nối từ `backend/public/diagram.json`. Giá trị và tọa độ không đến từ cảm biến thật; không dùng để lắp đặt, điều hướng hoặc phát cảnh báo ngoài thực địa. Phần dưới đây giữ lại các đề xuất mở rộng cho sản phẩm sau demo; các yêu cầu đó chưa được triển khai.
 
 Các vị trí trong tài liệu này chỉ là ví dụ minh họa, chưa được khảo sát hoặc xác nhận với đơn vị địa phương và không phải căn cứ kỹ thuật/địa lý để lắp đặt.
 

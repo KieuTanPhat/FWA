@@ -9,12 +9,18 @@ export class Database implements OnModuleDestroy {
   async onModuleDestroy() { await this.pool.end(); }
 
   async station(id: string) {
-    const demoFilter = process.env.DEMO_ONLY === 'true' ? " AND data_origin='SIMULATED'" : '';
+    const demoFilter = process.env.DEMO_ONLY === 'true'
+      ? " AND data_origin='SIMULATED' AND region_id IS NOT NULL"
+      : '';
     const result = await this.pool.query(
-      `SELECT id, data_origin FROM stations WHERE id=$1${demoFilter}`,
+      `SELECT id, data_origin, region_id FROM stations WHERE id=$1${demoFilter}`,
       [id],
     );
-    return result.rows[0] as { id: string; data_origin: 'PHYSICAL' | 'SIMULATED' } | undefined;
+    return result.rows[0] as {
+      id: string;
+      data_origin: 'PHYSICAL' | 'SIMULATED';
+      region_id: string | null;
+    } | undefined;
   }
 
   async saveTelemetry(v: Telemetry, origin: string): Promise<boolean> {
@@ -28,13 +34,13 @@ export class Database implements OnModuleDestroy {
         [v.station_id, v.boot_id],
       );
       const result = await c.query(`INSERT INTO telemetry
-        (message_id,station_id,boot_id,sequence,device_ts,time_quality,uptime_ms,water_level_cm,
+        (message_id,station_id,boot_id,sequence,device_ts,time_quality,uptime_ms,water_level_cm,distance_cm,
          rise_rate_cm_min,rain_tick_count,rain_mm_per_tick,temperature_c,risk_level,risk_validity,
          sensor_quality,device_health,outbox_lost_event_count,firmware_version,config_version,battery_v,data_origin)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
         ON CONFLICT(message_id) DO NOTHING RETURNING message_id`,
         [v.message_id,v.station_id,v.boot_id,v.sequence,v.device_ts,v.time_quality,v.uptime_ms,
-          v.water_level_cm,v.rise_rate_cm_min,v.rain_tick_count,v.rain_mm_per_tick,v.temperature_c,
+          v.water_level_cm,v.distance_cm ?? null,v.rise_rate_cm_min,v.rain_tick_count,v.rain_mm_per_tick,v.temperature_c,
           v.risk_level,v.risk_validity,JSON.stringify(v.sensor_quality),v.device_health,
           v.outbox_lost_event_count,v.firmware_version,v.config_version,v.battery_v,origin],
       );
@@ -98,9 +104,11 @@ export class Database implements OnModuleDestroy {
   }
 
   async stations(staleSeconds: number) {
-    const demoFilter = process.env.DEMO_ONLY === 'true' ? " WHERE s.data_origin='SIMULATED'" : '';
-    const r = await this.pool.query(`SELECT s.id,s.name,s.location,s.data_origin,s.last_status,s.last_status_at,
-      t.message_id,t.water_level_cm,t.rise_rate_cm_min,t.risk_level,t.risk_validity,
+    const demoFilter = process.env.DEMO_ONLY === 'true'
+      ? " WHERE s.data_origin='SIMULATED' AND s.region_id IS NOT NULL"
+      : '';
+    const r = await this.pool.query(`SELECT s.id,s.name,s.location,s.data_origin,s.region_id,s.last_status,s.last_status_at,
+      t.message_id,t.water_level_cm,t.distance_cm,t.rise_rate_cm_min,t.risk_level,t.risk_validity,
       t.sensor_quality,t.device_health,t.outbox_lost_event_count,t.received_at,t.device_ts,t.time_quality,t.temperature_c,
       t.rain_tick_count,t.rain_mm_per_tick,t.firmware_version,t.config_version
       FROM stations s LEFT JOIN telemetry t ON t.message_id=s.latest_message_id${demoFilter} ORDER BY s.id`);
@@ -144,6 +152,7 @@ export function presentStation(row: Record<string, unknown>, staleSeconds: numbe
   return {
     ...row,
     id: String(row.id),
+    region_id: row.region_id == null ? null : String(row.region_id),
     freshness: fresh ? 'FRESH' : 'STALE',
     link_state: online ? 'ONLINE' : 'OFFLINE',
     effective_risk_level: valid ? row.risk_level : null,

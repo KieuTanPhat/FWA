@@ -27,6 +27,7 @@ export const telemetrySchema = base.safeExtend({
   message_id: z.string().min(1).max(160),
   uptime_ms: z.number().int().nonnegative().safe(),
   water_level_cm: nullableFinite,
+  distance_cm: nullableFinite.optional(),
   rise_rate_cm_min: nullableFinite,
   rain_tick_count: z.number().int().nonnegative().safe().nullable(),
   rain_mm_per_tick: finite.nonnegative().nullable(),
@@ -75,6 +76,26 @@ export const statusSchema = z.object({
   device_health: z.enum(['OK', 'DEGRADED', 'FAULT']),
 });
 
+export const demoControlPatchSchema = z.object({
+  running: z.boolean().optional(),
+  direction: z.enum(['RISING', 'FALLING', 'HOLD']).optional(),
+  water_level_cm: z.number().finite().min(0).max(197).optional(),
+  baseline_water_cm: z.number().finite().min(0).max(197).optional(),
+  rise_rate_cm_min: z.number().finite().min(0).max(10).optional(),
+  watch_rate_cm_min: z.number().finite().min(0.1).max(100).optional(),
+  warning_rate_cm_min: z.number().finite().min(0.2).max(150).optional(),
+  emergency_rate_cm_min: z.number().finite().min(0.3).max(200).optional(),
+  rain_tick_count: z.number().int().min(0).max(1_000_000).optional(),
+  rain_rate_mm_hour: z.number().finite().min(0).max(500).optional(),
+  temperature_c: z.number().finite().min(-20).max(85).optional(),
+  watch_cm: z.number().finite().min(1).max(150).optional(),
+  warning_cm: z.number().finite().min(2).max(180).optional(),
+  emergency_cm: z.number().finite().min(3).max(196).optional(),
+  rain_tip: z.boolean().optional(),
+  reset: z.boolean().optional(),
+}).refine(value => Object.keys(value).length > 0, 'Cần thay đổi ít nhất một thông số');
+
 export type Telemetry = z.infer<typeof telemetrySchema>;
 export type Alert = z.infer<typeof alertSchema>;
 export type Status = z.infer<typeof statusSchema>;
+export type DemoControlPatch = z.infer<typeof demoControlPatchSchema>;

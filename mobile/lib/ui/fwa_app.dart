@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import '../demo/region_demo.dart';
 import '../models.dart';
 import '../state/dashboard_controller.dart';
+import 'region_map_screen.dart';
 
 const _navy = Color(0xFF12283D);
 const _teal = Color(0xFF087D75);
@@ -38,6 +38,7 @@ String timeLabel(DateTime? value) {
 
 String reasonLabel(String value) => switch (value) {
   'WATER_OR_RISE_THRESHOLD' || 'DEMO_WATER_THRESHOLD' => 'Mực nước vượt ngưỡng',
+  'DEMO_WATER_RECOVERED' => 'Mực nước đã hạ qua ngưỡng hồi phục',
   'SENSOR_TIMEOUT' || 'DEMO_SENSOR_TIMEOUT' => 'Mất tín hiệu cảm biến',
   'SENSOR_RECOVERED' || 'DEMO_SENSOR_RECOVERED' => 'Cảm biến hoạt động lại',
   _ => value,
@@ -95,19 +96,51 @@ class _Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<_Dashboard> {
   int tab = 0;
-  late String selectedRegionId;
+  String? selectedRegionId;
+  String? regionSaveError;
 
   @override
   void initState() {
     super.initState();
-    selectedRegionId = demoRegionById(widget.initialRegionId).id;
+    selectedRegionId = findDemoRegion(widget.initialRegionId)?.id;
   }
 
-  void _selectRegion(String id) {
-    if (id == selectedRegionId) return;
-    setState(() => selectedRegionId = id);
-    final save = widget.saveRegionId;
-    if (save != null) unawaited(save(id).catchError((Object _) {}));
+  Future<void> _selectRegion(String id) async {
+    if (id == selectedRegionId) {
+      return;
+    }
+    final region = findDemoRegion(id);
+    if (region == null) {
+      return;
+    }
+    try {
+      await widget.saveRegionId?.call(id);
+    } catch (_) {
+      if (mounted) {
+        setState(() => regionSaveError = 'Không lưu được khu vực đã chọn.');
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      selectedRegionId = id;
+      regionSaveError = null;
+    });
+    widget.controller.selectStation(region.sensors.single.stationId);
+  }
+
+  Future<void> _updateDemoControl(Map<String, dynamic> patch) async {
+    try {
+      await widget.controller.updateDemoControl(patch);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không đồng bộ được cảm biến: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _editApiBaseUrl(BuildContext context) async {
@@ -122,7 +155,35 @@ class _DashboardState extends State<_Dashboard> {
     animation: widget.controller,
     builder: (context, _) {
       final state = widget.controller;
-      final station = state.selectedStation;
+      final region = findDemoRegion(selectedRegionId);
+      final station = region == null
+          ? null
+          : state.stations
+                .where((item) => item.id == region.sensors.single.stationId)
+                .firstOrNull;
+      final incomingAlert = state.consumeIncomingAlert();
+      if (incomingAlert != null &&
+          region?.sensors.single.stationId == incomingAlert.stationId) {
+        final sensorName = region?.sensors.single.name ?? 'cảm biến';
+        final isRecovery =
+            incomingAlert.reasonCodes.contains('DEMO_WATER_RECOVERED') ||
+            (incomingAlert.currentLevel == 'NORMAL' &&
+                incomingAlert.previousLevel != 'NORMAL');
+        final message = isRecovery
+            ? 'Mực nước đã hạ dưới ngưỡng · $sensorName'
+            : 'Cảnh báo ${riskLabel(incomingAlert.currentLevel)} · $sensorName';
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final messenger = ScaffoldMessenger.of(context);
+          messenger.hideCurrentSnackBar();
+          messenger.showSnackBar(
+            SnackBar(
+              backgroundColor: riskColor(incomingAlert.currentLevel),
+              content: Text(message),
+            ),
+          );
+        });
+      }
       return Scaffold(
         appBar: AppBar(
           title: const Column(
@@ -151,10 +212,19 @@ class _DashboardState extends State<_Dashboard> {
             ),
           ],
         ),
-        body: tab == 1
-            ? _RegionMapScreen(
-                region: demoRegionById(selectedRegionId),
-                onRegionChanged: _selectRegion,
+        body: region == null
+            ? _RegionOnboarding(
+                onSelect: (id) => unawaited(_selectRegion(id)),
+                error: regionSaveError,
+              )
+            : tab == 1
+            ? RegionMapScreen(
+                region: region,
+                station: station,
+                control: state.demoControl,
+                error: state.error,
+                onRegionChanged: (id) => unawaited(_selectRegion(id)),
+                onControlPatch: _updateDemoControl,
               )
             : RefreshIndicator(
                 onRefresh: state.refresh,
@@ -170,8 +240,8 @@ class _DashboardState extends State<_Dashboard> {
                       ),
                     if (tab == 0) ...[
                       _RegionSelectionCard(
-                        region: demoRegionById(selectedRegionId),
-                        onChanged: _selectRegion,
+                        region: region,
+                        onChanged: (id) => unawaited(_selectRegion(id)),
                         onOpenMap: () => setState(() => tab = 1),
                       ),
                       const SizedBox(height: 14),
@@ -187,59 +257,163 @@ class _DashboardState extends State<_Dashboard> {
                         text: 'Chưa có trạm hoặc không kết nối được API.',
                         color: _navy,
                       ),
-                    if (state.stations.isNotEmpty) ...[
-                      _StationPicker(state: state),
+                    if (state.stations.isNotEmpty && station == null)
+                      const _Banner(
+                        icon: Icons.sensors_off,
+                        text:
+                            'Cảm biến của khu vực này chưa có dữ liệu trên máy chủ.',
+                        color: _navy,
+                      ),
+                    if (station != null) ...[
+                      _OriginHeader(station: station),
                       const SizedBox(height: 14),
-                      if (station != null) ...[
-                        _OriginHeader(station: station),
-                        const SizedBox(height: 14),
-                        if (tab == 0)
-                          _Overview(
-                            station: station,
-                            apiReachable: state.error == null,
-                          ),
-                        if (tab == 2)
-                          _History(points: state.history, station: station),
-                        if (tab == 3)
-                          _Alerts(alerts: state.alerts, station: station),
-                        if (tab == 4)
-                          _Connection(state: state, station: station),
-                      ],
+                      if (tab == 0)
+                        _Overview(
+                          station: station,
+                          apiReachable: state.error == null,
+                        ),
+                      if (tab == 2)
+                        _History(points: state.history, station: station),
+                      if (tab == 3)
+                        _Alerts(alerts: state.alerts, station: station),
+                      if (tab == 4) _Connection(state: state, station: station),
                     ],
                   ],
                 ),
               ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (value) => setState(() => tab = value),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.dashboard_outlined),
-              selectedIcon: Icon(Icons.dashboard),
-              label: 'Tổng quan',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.map_outlined),
-              selectedIcon: Icon(Icons.map),
-              label: 'Bản đồ',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.show_chart),
-              label: 'Lịch sử',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.notifications_outlined),
-              selectedIcon: Icon(Icons.notifications),
-              label: 'Sự kiện',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_ethernet),
-              label: 'Kết nối',
-            ),
-          ],
-        ),
+        bottomNavigationBar: region == null
+            ? null
+            : NavigationBar(
+                selectedIndex: tab,
+                onDestinationSelected: (value) => setState(() => tab = value),
+                destinations: const [
+                  NavigationDestination(
+                    icon: Icon(Icons.dashboard_outlined),
+                    selectedIcon: Icon(Icons.dashboard),
+                    label: 'Tổng quan',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.map_outlined),
+                    selectedIcon: Icon(Icons.map),
+                    label: 'Bản đồ',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.show_chart),
+                    label: 'Lịch sử',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.notifications_outlined),
+                    selectedIcon: Icon(Icons.notifications),
+                    label: 'Sự kiện',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.settings_ethernet),
+                    label: 'Kết nối',
+                  ),
+                ],
+              ),
       );
     },
+  );
+}
+
+class _RegionOnboarding extends StatelessWidget {
+  const _RegionOnboarding({required this.onSelect, this.error});
+
+  final ValueChanged<String> onSelect;
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: ListView(
+      padding: const EdgeInsets.fromLTRB(18, 28, 18, 28),
+      children: [
+        const Icon(Icons.flood_outlined, color: _teal, size: 46),
+        const SizedBox(height: 14),
+        const Text(
+          'Chọn khu vực quan tâm',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: _navy,
+            fontSize: 22,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Ứng dụng chỉ hiển thị số đo và cảnh báo của một vùng bạn chọn. Có thể đổi khu vực bất cứ lúc nào.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Color(0xFF61717F), fontSize: 13),
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.red),
+          ),
+        ],
+        const SizedBox(height: 22),
+        for (final region in demoRegions) ...[
+          Card(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => onSelect(region.id),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const CircleAvatar(
+                      backgroundColor: Color(0xFFE8F4F2),
+                      foregroundColor: _teal,
+                      child: Icon(Icons.water),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            region.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: _navy,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            region.administrativeArea,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF61717F),
+                            ),
+                          ),
+                          Text(
+                            '${region.sensors.single.name} · dữ liệu mô phỏng',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF8C4D17),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: _teal),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 9),
+        ],
+        const SizedBox(height: 8),
+        const Text(
+          'Chọn vùng để bật màn hình đo và nhận thông báo trong ứng dụng. Mọi số đo trong project hiện tại đều là mô phỏng.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Color(0xFF7C8A93), fontSize: 11),
+        ),
+      ],
+    ),
   );
 }
 
@@ -301,569 +475,6 @@ class _RegionSelectionCard extends StatelessWidget {
                 label: const Text('Bản đồ'),
               ),
             ],
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _RegionMapScreen extends StatefulWidget {
-  const _RegionMapScreen({required this.region, required this.onRegionChanged});
-
-  final DemoRegion region;
-  final ValueChanged<String> onRegionChanged;
-
-  @override
-  State<_RegionMapScreen> createState() => _RegionMapScreenState();
-}
-
-class _RegionMapScreenState extends State<_RegionMapScreen> {
-  late List<DemoSensorReading> readings;
-  final Set<String> announcedLevels = {};
-  Timer? timer;
-  bool running = false;
-  bool waterRising = true;
-  String? latestAlert;
-
-  @override
-  void initState() {
-    super.initState();
-    _resetReadings();
-  }
-
-  @override
-  void didUpdateWidget(covariant _RegionMapScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.region.id != widget.region.id) {
-      timer?.cancel();
-      running = false;
-      announcedLevels.clear();
-      latestAlert = null;
-      _resetReadings();
-    }
-  }
-
-  void _resetReadings() {
-    readings = widget.region.sensors.map(DemoSensorReading.new).toList();
-  }
-
-  void _startSimulation({required bool rising}) {
-    timer?.cancel();
-    setState(() {
-      waterRising = rising;
-      running = true;
-    });
-    timer = Timer.periodic(demoSamplePeriod, (_) => _takeSample());
-  }
-
-  void _takeSample() {
-    String? alertMessage;
-    String? alertRisk;
-    for (final reading in readings) {
-      final escalation = reading.sample(waterRising: waterRising);
-      if (escalation != null && announcedLevels.add(escalation)) {
-        alertRisk = escalation;
-        alertMessage = '${riskLabel(escalation)} tại ${reading.site.name}';
-      }
-    }
-
-    final reachedBottom =
-        !waterRising &&
-        readings.every(
-          (reading) =>
-              reading.riskLevel == 'NORMAL' &&
-              reading.waterLevelCm <= reading.site.initialWaterLevelCm,
-        );
-    if (reachedBottom) {
-      timer?.cancel();
-      running = false;
-    }
-    if (mounted) setState(() => latestAlert = alertMessage ?? latestAlert);
-    if (alertMessage != null && mounted) {
-      final messenger = ScaffoldMessenger.of(context);
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(
-          duration: const Duration(seconds: 4),
-          backgroundColor: riskColor(alertRisk),
-          content: Row(
-            children: [
-              const Icon(Icons.notifications_active, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Cảnh báo mô phỏng: $alertMessage')),
-            ],
-          ),
-        ),
-      );
-    }
-  }
-
-  void _resetSimulation() {
-    timer?.cancel();
-    announcedLevels.clear();
-    for (final reading in readings) {
-      reading.reset();
-    }
-    setState(() {
-      running = false;
-      waterRising = true;
-      latestAlert = null;
-    });
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-  }
-
-  void _showDetails(DemoSensorReading reading) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => _SensorDetailsSheet(reading: reading),
-    );
-  }
-
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final highestRisk = readings
-        .map((reading) => reading.riskLevel)
-        .reduce((a, b) => riskRank(a) >= riskRank(b) ? a : b);
-    final direction = waterRising ? 'nước đang dâng' : 'nước đang hạ';
-
-    return SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'CHỌN LƯU VỰC',
-                      style: TextStyle(
-                        color: Color(0xFF61717F),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        value: widget.region.id,
-                        items: demoRegions
-                            .map(
-                              (region) => DropdownMenuItem(
-                                value: region.id,
-                                child: Text(
-                                  region.name,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (id) {
-                          if (id != null) widget.onRegionChanged(id);
-                        },
-                      ),
-                    ),
-                    Text(
-                      '${widget.region.administrativeArea} · ${readings.length} điểm đo mô phỏng',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF536675),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF4E8),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'DEMO IoT · Số đo giả lập theo cảm biến project. Pin là vị trí tham khảo, chưa xác nhận cảm biến lắp thực tế.',
-                style: TextStyle(
-                  color: Color(0xFF8C4D17),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _ThresholdChip(
-                    label: 'Theo dõi',
-                    value: '${demoWatchCm.toInt()} cm',
-                    color: riskColor('WATCH'),
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: _ThresholdChip(
-                    label: 'Cảnh báo',
-                    value: '${demoWarningCm.toInt()} cm',
-                    color: riskColor('WARNING'),
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Expanded(
-                  child: _ThresholdChip(
-                    label: 'Khẩn cấp',
-                    value: '${demoEmergencyCm.toInt()} cm',
-                    color: riskColor('EMERGENCY'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    running
-                        ? 'Đang mô phỏng $direction · mức cao nhất: ${riskLabel(highestRisk)}'
-                        : 'Tạm dừng · mức cao nhất: ${riskLabel(highestRisk)}',
-                    style: TextStyle(
-                      color: riskColor(highestRisk),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                Text(
-                  '${announcedLevels.length}/3 cảnh báo đã phát',
-                  style: const TextStyle(
-                    color: Color(0xFF61717F),
-                    fontSize: 10,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () => _startSimulation(rising: true),
-                    icon: const Icon(Icons.water_drop_outlined),
-                    label: const Text('Nước dâng'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _startSimulation(rising: false),
-                    icon: const Icon(Icons.south_outlined),
-                    label: const Text('Nước hạ'),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Đặt lại kịch bản',
-                  onPressed: _resetSimulation,
-                  icon: const Icon(Icons.restart_alt),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 1, 12, 5),
-            child: Text(
-              latestAlert ??
-                  'Mẫu mỗi 2 giây = 1 phút mô phỏng · dâng 0,5 cm/phút · cần 3 mẫu vượt ngưỡng',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10, color: Color(0xFF61717F)),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: FlutterMap(
-                  key: ValueKey(widget.region.id),
-                  options: MapOptions(
-                    initialCenter: widget.region.center,
-                    initialZoom: widget.region.zoom,
-                    minZoom: 6,
-                    maxZoom: 18,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'vn.fwa.floodwatch',
-                    ),
-                    MarkerLayer(
-                      markers: [
-                        for (var index = 0; index < readings.length; index++)
-                          _sensorMarker(readings[index], index),
-                      ],
-                    ),
-                    const RichAttributionWidget(
-                      attributions: [
-                        TextSourceAttribution('© OpenStreetMap contributors'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 130,
-            child: ListView.separated(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-              scrollDirection: Axis.horizontal,
-              itemCount: readings.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (context, index) => _SensorMiniCard(
-                reading: readings[index],
-                onTap: () => _showDetails(readings[index]),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Marker _sensorMarker(DemoSensorReading reading, int index) => Marker(
-    point: reading.site.position,
-    width: 54,
-    height: 54,
-    child: Tooltip(
-      message:
-          '${reading.site.name}\n${reading.waterLevelCm.toStringAsFixed(1)} cm · ${riskLabel(reading.riskLevel)} · MÔ PHỎNG',
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: () => _showDetails(reading),
-        child: Container(
-          decoration: BoxDecoration(
-            color: riskColor(reading.riskLevel),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 3),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x55000000),
-                blurRadius: 6,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            '${index + 1}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _ThresholdChip extends StatelessWidget {
-  const _ThresholdChip({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.09),
-      borderRadius: BorderRadius.circular(9),
-    ),
-    child: Column(
-      children: [
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: color,
-            fontSize: 9,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _SensorMiniCard extends StatelessWidget {
-  const _SensorMiniCard({required this.reading, required this.onTap});
-
-  final DemoSensorReading reading;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 205,
-    child: Card(
-      margin: EdgeInsets.zero,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.sensors,
-                    color: riskColor(reading.riskLevel),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      reading.site.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  const Icon(
-                    Icons.science_outlined,
-                    color: Color(0xFFAB5A1B),
-                    size: 15,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                '${reading.waterLevelCm.toStringAsFixed(1)} cm · ${riskLabel(reading.riskLevel)}',
-                style: TextStyle(
-                  color: riskColor(reading.riskLevel),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 15,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${reading.site.river} · MÔ PHỎNG',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Color(0xFF61717F), fontSize: 10),
-              ),
-              Text(
-                'Cập nhật ${DateFormat('HH:mm:ss').format(reading.updatedAt)}',
-                style: const TextStyle(color: Color(0xFF61717F), fontSize: 10),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _SensorDetailsSheet extends StatelessWidget {
-  const _SensorDetailsSheet({required this.reading});
-
-  final DemoSensorReading reading;
-
-  @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  reading.site.name,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: _navy,
-                  ),
-                ),
-              ),
-              const _Badge(
-                label: 'MÔ PHỎNG',
-                icon: Icons.science_outlined,
-                color: Color(0xFFAB5A1B),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text('${reading.site.river} · ${reading.site.place}'),
-          const SizedBox(height: 14),
-          _Line('Mực nước', '${reading.waterLevelCm.toStringAsFixed(1)} cm'),
-          _Line(
-            'Tốc độ mô phỏng',
-            '${reading.riseRateCmMin.toStringAsFixed(1)} cm/phút',
-          ),
-          _Line('Cấp cảnh báo', riskLabel(reading.riskLevel)),
-          _Line('Cảm biến mực nước', 'GOOD · A02YYUW (mô hình project)'),
-          _Line(
-            'Tọa độ tham khảo',
-            '${reading.site.position.latitude.toStringAsFixed(4)}, ${reading.site.position.longitude.toStringAsFixed(4)}',
-          ),
-          _Line(
-            'Mẫu mới nhất',
-            DateFormat('dd/MM/yyyy HH:mm:ss').format(reading.updatedAt),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Giá trị và vị trí pin phục vụ trình diễn; chưa đại diện cho cảm biến vật lý đã lắp hoặc cảnh báo lũ thực tế.',
-            style: TextStyle(
-              color: Color(0xFF8C4D17),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
           ),
         ],
       ),
@@ -938,45 +549,6 @@ class _ApiUrlDialogState extends State<_ApiUrlDialog> {
         child: Text(saving ? 'Đang lưu…' : 'Lưu và kết nối'),
       ),
     ],
-  );
-}
-
-class _StationPicker extends StatelessWidget {
-  const _StationPicker({required this.state});
-  final DashboardController state;
-  @override
-  Widget build(BuildContext context) => Card(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          const Icon(Icons.sensors, color: _teal),
-          const SizedBox(width: 12),
-          Expanded(
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                isExpanded: true,
-                value: state.selectedId,
-                items: state.stations
-                    .map(
-                      (s) => DropdownMenuItem(
-                        value: s.id,
-                        child: Text(
-                          '${s.name} · ${s.isSimulated ? 'MÔ PHỎNG' : 'THIẾT BỊ THẬT'}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (id) {
-                  if (id != null) state.selectStation(id);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
   );
 }
 
@@ -1139,6 +711,14 @@ class _Overview extends StatelessWidget {
                       ? '—'
                       : '${station.waterLevelCm!.toStringAsFixed(1)} cm',
                   icon: Icons.water,
+                ),
+                _Metric(
+                  width: width,
+                  title: 'Khoảng cách siêu âm',
+                  value: station.distanceCm == null
+                      ? '—'
+                      : '${station.distanceCm!.toStringAsFixed(1)} cm',
+                  icon: Icons.sensors,
                 ),
                 _Metric(
                   width: width,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data/fwa_repository.dart';
+import 'demo/region_demo.dart';
 import 'state/dashboard_controller.dart';
 import 'ui/fwa_app.dart';
 
@@ -28,8 +29,13 @@ Future<void> main() async {
   }
   final initialUrl = configuredUrl;
 
+  final selectedRegion = findDemoRegion(
+    preferences?.getString('selected_region_id'),
+  );
   final controller = DashboardController(
     HttpFwaRepository(initialUrl),
+    initialStationId: selectedRegion?.sensors.single.stationId,
+    requireRegionSelection: true,
     saveBaseUrl: (url) async {
       final store = preferences;
       if (store == null || !await store.setString('api_base_url', url)) {
@@ -40,7 +46,7 @@ Future<void> main() async {
   runApp(
     FwaApp(
       controller: controller,
-      initialRegionId: preferences?.getString('selected_region_id'),
+      initialRegionId: selectedRegion?.id,
       saveRegionId: (id) async {
         final store = preferences;
         if (store != null && !await store.setString('selected_region_id', id)) {

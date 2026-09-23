@@ -1,5 +1,7 @@
-import { BadRequestException, Controller, Get, Inject, Module, NotFoundException, Param, Provider, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Module, NotFoundException, Param, Patch, Provider, Query } from '@nestjs/common';
 import { Database } from './database';
+import { demoControlPatchSchema } from './contracts';
+import { DemoSimulator } from './demo-simulator';
 import { MqttIngest } from './mqtt-ingest';
 import { Stream } from './stream';
 
@@ -17,7 +19,10 @@ function dateOf(raw: string | undefined) {
 
 @Controller()
 class ApiController {
-  constructor(@Inject(Database) private readonly db: Database) {}
+  constructor(
+    @Inject(Database) private readonly db: Database,
+    @Inject(DemoSimulator) private readonly simulator: DemoSimulator,
+  ) {}
 
   @Get('/healthz')
   async health() {
@@ -50,9 +55,32 @@ class ApiController {
     if (id && !await this.db.station(id)) throw new NotFoundException('Không tìm thấy trạm');
     return this.db.alerts(id, limitOf(limit), dateOf(before));
   }
+
+  @Get('/api/v1/demo/stations/:id/control')
+  async demoControl(@Param('id') id: string) {
+    return this.simulator.getControl(id);
+  }
+
+  @Patch('/api/v1/demo/stations/:id/control')
+  async updateDemoControl(@Param('id') id: string, @Body() body: unknown) {
+    const parsed = demoControlPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException(parsed.error.issues.map(issue => issue.message).join('; '));
+    }
+    try {
+      return await this.simulator.updateControl(id, parsed.data);
+    } catch (error) {
+      if (error instanceof Error &&
+          (error.message.startsWith('Ngưỡng') || error.message.startsWith('Mực nước'))) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
 }
 
 const providers: Provider[] = [Database, Stream];
+providers.push(DemoSimulator);
 if (process.env.MQTT_ENABLED !== 'false') providers.push(MqttIngest);
 
 @Module({ controllers: [ApiController], providers, exports: [Stream] })

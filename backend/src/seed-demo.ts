@@ -64,20 +64,20 @@ async function main() {
       const quality = { water: sample.fault ? 'BAD' : 'GOOD', rain: 'GOOD', temperature: 'GOOD' };
       await client.query(
         `INSERT INTO telemetry
-          (message_id,station_id,boot_id,sequence,device_ts,time_quality,uptime_ms,water_level_cm,
+          (message_id,station_id,boot_id,sequence,device_ts,time_quality,uptime_ms,water_level_cm,distance_cm,
            rise_rate_cm_min,rain_tick_count,rain_mm_per_tick,temperature_c,risk_level,risk_validity,
            sensor_quality,device_health,outbox_lost_event_count,firmware_version,config_version,battery_v,data_origin,received_at)
-         VALUES ($1,$2,$3,$4,$5,'SYNCED',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,0,$16,$17,$18,'SIMULATED',$5)
+         VALUES ($1,$2,$3,$4,$5,'SYNCED',$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,0,$17,$18,$19,'SIMULATED',$5)
          ON CONFLICT (message_id) DO UPDATE SET
            device_ts=EXCLUDED.device_ts, uptime_ms=EXCLUDED.uptime_ms, water_level_cm=EXCLUDED.water_level_cm,
-           rise_rate_cm_min=EXCLUDED.rise_rate_cm_min, rain_tick_count=EXCLUDED.rain_tick_count,
+           distance_cm=EXCLUDED.distance_cm,rise_rate_cm_min=EXCLUDED.rise_rate_cm_min, rain_tick_count=EXCLUDED.rain_tick_count,
            rain_mm_per_tick=EXCLUDED.rain_mm_per_tick, temperature_c=EXCLUDED.temperature_c,
            risk_level=EXCLUDED.risk_level, risk_validity=EXCLUDED.risk_validity,
            sensor_quality=EXCLUDED.sensor_quality, device_health=EXCLUDED.device_health,
            received_at=EXCLUDED.received_at`,
         [
           messageId, STATION_ID, BOOT_ID, sequence, sampledAt, sequence * SAMPLE_INTERVAL_MS,
-          sample.waterLevel, riseRate,
+          sample.waterLevel, sample.waterLevel === null ? null : 200 - sample.waterLevel, riseRate,
           Math.floor(index / 20), 0.2, 27 + (index % 4) * 0.2, sample.risk,
           sample.fault ? 'UNKNOWN' : 'VALID', JSON.stringify(quality), sample.fault ? 'DEGRADED' : 'OK',
           'simulator-cloud-demo', 'cloud-demo-2026-v1', 4.05 - (index % 10) * 0.005,
