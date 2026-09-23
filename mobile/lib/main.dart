@@ -37,6 +37,17 @@ Future<void> main() async {
       }
     },
   );
-  runApp(FwaApp(controller: controller));
+  runApp(
+    FwaApp(
+      controller: controller,
+      initialRegionId: preferences?.getString('selected_region_id'),
+      saveRegionId: (id) async {
+        final store = preferences;
+        if (store != null && !await store.setString('selected_region_id', id)) {
+          throw StateError('Không lưu được khu vực đã chọn.');
+        }
+      },
+    ),
+  );
   unawaited(controller.start());
 }

@@ -17,6 +17,18 @@ Xem [runbook](docs/runbook.md) để khởi động demo. Dự án là prototype
 
 ## Giao diện ứng dụng
 
+Ứng dụng có tab **Bản đồ** cho demo IoT tại ba lưu vực: Thao–Chảy, Hương–Bồ và Vu Gia–Thu Bồn. Mỗi pin và số đo đều là dữ liệu mô phỏng theo cảm biến của project; tọa độ là điểm tham khảo, không xác nhận vị trí cảm biến đã lắp ngoài thực địa. Bản đồ nền OpenStreetMap tải qua mạng khi mở tab, không đóng gói tile vào APK.
+
+Kịch bản nước dâng cập nhật mỗi 2 giây (tương đương 1 phút mô phỏng), tăng 0,5 cm/phút mô phỏng. Các mức demo lấy theo firmware: 30/50/70 cm; cần 3 mẫu liên tiếp để nâng cấp cảnh báo, có hysteresis 5 cm và 4 mẫu để hạ cấp. Mỗi mức chỉ phát thông báo một lần trong một lượt mô phỏng; **đây không phải cảnh báo thực tế**.
+
+Để tạo APK release nhỏ theo kiến trúc thiết bị, chạy trong `mobile/`:
+
+```sh
+flutter build apk --release --split-per-abi
+```
+
+Điện thoại Android ARM64 dùng `mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`; máy ARM 32-bit dùng `app-armeabi-v7a-release.apk`.
+
 ![Tổng quan trạm](mobile-screen.png)
 
 ![Sự kiện cảnh báo](mobile-alerts.png)
