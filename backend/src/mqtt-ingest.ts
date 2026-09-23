@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import mqtt, { MqttClient } from 'mqtt';
 import { alertSchema, statusSchema, telemetrySchema } from './contracts';
 import { Database } from './database';
@@ -8,7 +8,7 @@ import { Stream } from './stream';
 export class MqttIngest implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MqttIngest.name);
   private client?: MqttClient;
-  constructor(private readonly db: Database, private readonly stream: Stream) {}
+  constructor(@Inject(Database) private readonly db: Database, @Inject(Stream) private readonly stream: Stream) {}
 
   onModuleInit() {
     this.client = mqtt.connect(process.env.MQTT_URL ?? 'mqtt://127.0.0.1:1883', {
@@ -60,4 +60,3 @@ export class MqttIngest implements OnModuleInit, OnModuleDestroy {
     }
   }
 }
-
