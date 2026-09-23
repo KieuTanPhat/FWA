@@ -9,7 +9,11 @@ export class Database implements OnModuleDestroy {
   async onModuleDestroy() { await this.pool.end(); }
 
   async station(id: string) {
-    const result = await this.pool.query('SELECT id, data_origin FROM stations WHERE id=$1', [id]);
+    const demoFilter = process.env.DEMO_ONLY === 'true' ? " AND data_origin='SIMULATED'" : '';
+    const result = await this.pool.query(
+      `SELECT id, data_origin FROM stations WHERE id=$1${demoFilter}`,
+      [id],
+    );
     return result.rows[0] as { id: string; data_origin: 'PHYSICAL' | 'SIMULATED' } | undefined;
   }
 
@@ -94,11 +98,12 @@ export class Database implements OnModuleDestroy {
   }
 
   async stations(staleSeconds: number) {
+    const demoFilter = process.env.DEMO_ONLY === 'true' ? " WHERE s.data_origin='SIMULATED'" : '';
     const r = await this.pool.query(`SELECT s.id,s.name,s.location,s.data_origin,s.last_status,s.last_status_at,
       t.message_id,t.water_level_cm,t.rise_rate_cm_min,t.risk_level,t.risk_validity,
       t.sensor_quality,t.device_health,t.outbox_lost_event_count,t.received_at,t.device_ts,t.time_quality,t.temperature_c,
       t.rain_tick_count,t.rain_mm_per_tick,t.firmware_version,t.config_version
-      FROM stations s LEFT JOIN telemetry t ON t.message_id=s.latest_message_id ORDER BY s.id`);
+      FROM stations s LEFT JOIN telemetry t ON t.message_id=s.latest_message_id${demoFilter} ORDER BY s.id`);
     return r.rows.map(row => presentStation(row, staleSeconds));
   }
 
