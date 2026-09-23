@@ -37,7 +37,7 @@ Trạm `sim-01` có nhãn **MÔ PHỎNG** cố định. Kịch bản gồm NORMA
 
 Backend cần `DEMO_ONLY=true`, `MQTT_ENABLED=false` và đã chạy đủ migration. Mở `http://<IP-máy-backend>:3000/iot`. Web render phần ESP32, HC-SR04, DS18B20, nút gầu lật mưa, LED, còi và điện trở từ `backend/public/diagram.json`.
 
-Mỗi vùng có một cảm biến server-side: `sim-01` Thao–Chảy, `sim-02` Hương–Bồ, `sim-03` Vu Gia–Thu Bồn. Backend phát một mẫu mỗi 5 giây, lưu mẫu vào PostgreSQL và đẩy sự kiện qua WebSocket. Web và app cùng cập nhật mực nước, tốc độ, lượng mưa, nhiệt độ và ngưỡng. Tốc độ mực nước nhập theo cm/phút được quy đổi đúng theo chu kỳ 5 giây; mưa tiếp tục tích lũy khi mực nước đang tạm dừng. Mặc định ngưỡng tốc độ là 5/10/15 cm/phút, ngưỡng mực nước là 30/50/70 cm; cần 3 mẫu để nâng cấp và 4 mẫu cùng hysteresis 5 cm để hạ cấp. Có thể dùng web để chỉnh số đo và cả hai nhóm ngưỡng, hoặc dùng slider/nhịp mưa trong app; thay đổi hiện ở cả hai màn hình. Nhật ký telemetry demo tự dọn sau 7 ngày.
+Mỗi vùng có một cảm biến server-side: `sim-01` Thao–Chảy, `sim-02` Hương–Bồ, `sim-03` Vu Gia–Thu Bồn. Backend phát một mẫu mỗi 5 giây, lưu mẫu vào PostgreSQL và đẩy sự kiện qua WebSocket. Web hiển thị số đo và có thể chỉnh mực nước, tốc độ, mưa, nhiệt độ cùng hai nhóm ngưỡng; app người dùng chỉ nhận số liệu, lịch sử và cảnh báo. Mặc định ngưỡng nước là 30/50/70 cm, ngưỡng tốc độ là 5/10/15 cm/phút. Tăng cấp cần 3 mẫu; giảm cấp cần thấp hơn ngưỡng hồi phục 5 cm trong 4 mẫu. Khi chỉnh ngưỡng trên web, cần xác nhận và mỗi mức cách nhau ít nhất 5 cm nước hoặc 1 cm/phút tốc độ. Nhật ký demo tự dọn sau 7 ngày.
 
 ## 4. Chạy trạm ESP32 thật
 
@@ -59,9 +59,11 @@ flutter test
 flutter run --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000
 ```
 
-`10.0.2.2` dùng cho Android emulator. Điện thoại thật dùng `http://<IP-LAN-MÁY-BACKEND>:3000`; tránh `localhost` vì đó là điện thoại. Để tạo APK cài thử: `flutter build apk --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000`; file tại `mobile/build/app/outputs/flutter-apk/app-debug.apk`. URL này là mặc định; có thể mở nút cài đặt trên app để đổi và lưu URL LAN của backend. Bản release yêu cầu HTTPS và khóa ký riêng; bản debug chỉ dùng LAN demo.
+Mặc định app dùng backend Render. `10.0.2.2` chỉ dùng cho Android emulator chạy backend local; điện thoại thật cần build với IP LAN backend trong `--dart-define=API_BASE_URL=http://<IP-LAN-MÁY-BACKEND>:3000`. URL API không thể đổi từ trong app. Để tạo APK cài thử: `flutter build apk --debug`; file tại `mobile/build/app/outputs/flutter-apk/app-debug.apk`.
 
-Khi mở lần đầu, app yêu cầu chọn một trong ba lưu vực; lựa chọn được lưu trên thiết bị. Bản đồ, sự kiện và thông báo trong app lọc theo đúng một station của vùng đó. Tab Bản đồ điều khiển số đo demo chung với web. Khi dữ liệu cũ quá 15 giây/API lỗi, app hiển thị **Không xác định** và tách lần ghi nhận cuối khỏi hiện trạng.
+Khi mở lần đầu, app yêu cầu chọn một trong ba lưu vực; lựa chọn được lưu trên thiết bị. Bản đồ, sự kiện và thông báo lọc theo đúng một station của vùng đó. Bản đồ dùng nền OpenStreetMap với vị trí cảm biến minh họa. Màn tổng quan hiển thị số đo hiện tại và ước tính tuyến tính theo tốc độ đo gần đây ở các mốc 1, 3, 6, 12 giờ và 1 ngày; đây không phải dự báo thời tiết. Khi dữ liệu cũ quá 15 giây hoặc API lỗi, app hiển thị **Không xác định** và tách lần ghi nhận cuối khỏi hiện trạng.
+
+Khi mức chuyển sang **Khẩn cấp**, app dùng thông báo Android ưu tiên cao, âm báo, rung và `fullScreenIntent`. Android 13+ cần cho phép thông báo; Android 14+ có thể yêu cầu người dùng bật quyền toàn màn hình trong Cài đặt ứng dụng. Cảnh báo điện thoại cần app còn được Android chạy nền và có kết nối backend; force-stop, mất mạng hoặc chính sách tiết kiệm pin có thể ngăn nhận sự kiện. Demo chưa tích hợp push notification từ cloud.
 
 Tạo APK nhỏ theo ABI bằng `flutter build apk --release --split-per-abi`. Điện thoại phổ biến dùng ARM64: `mobile/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`; máy ARM 32-bit dùng `app-armeabi-v7a-release.apk`.
 
@@ -69,7 +71,7 @@ Tạo APK nhỏ theo ABI bằng `flutter build apk --release --split-per-abi`. �
 
 1. Chỉ trạm và nhãn THIẾT BỊ THẬT/MÔ PHỎNG, thời gian nhận, chất lượng nước.
 2. Tăng nước trên jig; đối chiếu với thước và ngưỡng trong biên bản hiệu chuẩn.
-3. Chờ xác nhận nhiều mẫu; chứng minh còi/đèn tại chỗ và alert trong app.
+3. Chờ xác nhận nhiều mẫu; chứng minh còi/đèn tại chỗ và cảnh báo trong app (đã bật quyền thông báo).
 4. `docker compose stop mosquitto`; tiếp tục thay đổi mực nước, quan sát còi/đèn. App sau timeout hiện dữ liệu cũ/không xác định.
 5. `docker compose start mosquitto`; quan sát outbox gửi lại, alert không nhân đôi.
 6. Xem lịch sử, lý do sự kiện, trạng thái kết nối và giới hạn của prototype.
@@ -81,7 +83,7 @@ Nếu thiếu phần cứng, chuyển sang `sim-01` và nói rõ đây là mô p
 | Mục | Bằng chứng cần có |
 |---|---|
 | Parser/logic ESP32 | Native test pass, ESP32 build pass, đo bench/hình ảnh của trạm thật |
-| Luồng dữ liệu | Migration sạch, web simulator → DB → REST/WebSocket → web/app; MQTT/CLI simulator kiểm tra riêng |
+| Luồng dữ liệu | Migration sạch, web simulator → DB → REST/WebSocket → web/app; app người dùng chỉ đọc; MQTT/CLI simulator kiểm tra riêng |
 | Cảnh báo offline | Video rút mạng với còi/đèn thật, outbox gửi lại sau phục hồi |
 | App | `flutter analyze`, `flutter test`, APK debug cài/chạy trên emulator hoặc điện thoại |
 | Bảo mật demo | ACL broker, credential ngoài Git, LAN riêng, app không chứa MQTT password |
