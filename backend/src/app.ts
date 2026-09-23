@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Injectable, Module, NotFoundException, Param, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Module, NotFoundException, Param, Query } from '@nestjs/common';
 import { Database } from './database';
 import { MqttIngest } from './mqtt-ingest';
 import { Stream } from './stream';
@@ -17,7 +17,7 @@ function dateOf(raw: string | undefined) {
 
 @Controller()
 class ApiController {
-  constructor(private readonly db: Database) {}
+  constructor(@Inject(Database) private readonly db: Database) {}
 
   @Get('/healthz')
   async health() {
@@ -54,4 +54,3 @@ class ApiController {
 
 @Module({ controllers: [ApiController], providers: [Database, Stream, MqttIngest], exports: [Stream] })
 export class AppModule {}
-
