@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102337">
+  <title>FWA · Bàn điều khiển cảm biến IoT</title>
+  <link rel="stylesheet" href="/iot/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">FWA</div>
+    <div class="brand-copy"><strong>TRẠM CẢNH BÁO LŨ IoT</strong><span>BÀN ĐIỀU KHIỂN DEMO</span></div>
+    <div class="top-spacer"></div>
+    <div class="demo-tag"><span class="pulse-dot"></span> MÔ PHỎNG · DỮ LIỆU DEMO</div>
+    <div id="connection" class="connection"><i></i><span>Đang kết nối…</span></div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel region-panel">
+        <div class="eyebrow">TRẠM ĐANG GIÁM SÁT</div>
+        <label for="region-select" class="field-label">Khu vực mô phỏng</label>
+        <select id="region-select" aria-label="Chọn lưu vực"></select>
+        <div id="region-subtitle" class="muted small"></div>
+        <div class="station-card">
+          <div class="station-icon"><span class="material">◎</span></div>
+          <div><strong id="sensor-name">Cảm biến</strong><div id="station-location" class="muted small"></div></div>
+        </div>
+        <div class="tiny-note">Một cảm biến mô phỏng cho mỗi vùng đã chọn.</div>
+      </section>
+
+      <section class="panel status-panel">
+        <div class="section-heading"><span class="eyebrow">TRẠNG THÁI TRẠM</span><span id="risk-badge" class="risk-badge normal">BÌNH THƯỜNG</span></div>
+        <div class="big-reading"><span id="water-value">--.-</span><small>cm</small></div>
+        <div class="muted small">Mực nước giả lập · cập nhật mỗi 5 giây</div>
+        <div class="threshold-list">
+          <div><span><b class="dot watch"></b>Theo dõi</span><strong id="watch-value">30 cm</strong></div>
+          <div><span><b class="dot warning"></b>Cảnh báo</span><strong id="warning-value">50 cm</strong></div>
+          <div><span><b class="dot emergency"></b>Khẩn cấp</span><strong id="emergency-value">70 cm</strong></div>
+        </div>
+        <div class="mini-grid">
+          <div><span>Mưa tích lũy</span><strong id="rain-value">--.- mm</strong></div>
+          <div><span>Nhiệt độ</span><strong id="temperature-value">--.- °C</strong></div>
+        </div>
+      </section>
+
+      <section class="panel control-panel">
+        <div class="section-heading"><div><div class="eyebrow">ĐIỀU KHIỂN KỊCH BẢN</div><h2>Chủ động demo</h2></div><span class="lock-icon">⌁</span></div>
+        <form id="control-form">
+          <div class="input-row two-col">
+            <label>Mực nước (cm)<input name="water_level_cm" type="number" min="18" max="197" step="0.1" required></label>
+            <label>Tốc độ (cm/phút)<input name="rise_rate_cm_min" type="number" min="0" max="10" step="0.1" required></label>
+          </div>
+          <div class="input-row two-col">
+            <label>Mưa (mm/giờ)<input name="rain_rate_mm_hour" type="number" min="0" max="500" step="0.1" required></label>
+            <label>Nhiệt độ (°C)<input name="temperature_c" type="number" min="-20" max="85" step="0.1" required></label>
+          </div>
+          <div class="threshold-editor">
+            <label>Ngưỡng theo dõi<input name="watch_cm" type="number" min="1" max="150" step="0.1" required></label>
+            <label>Ngưỡng cảnh báo<input name="warning_cm" type="number" min="2" max="180" step="0.1" required></label>
+            <label>Ngưỡng khẩn cấp<input name="emergency_cm" type="number" min="3" max="196" step="0.1" required></label>
+          </div>
+          <div class="rate-threshold-title">Ngưỡng theo tốc độ dâng (cm/phút)</div>
+          <div class="threshold-editor rate-threshold-editor">
+            <label>Theo dõi<input name="watch_rate_cm_min" type="number" min="0.1" max="100" step="0.1" required></label>
+            <label>Cảnh báo<input name="warning_rate_cm_min" type="number" min="0.2" max="150" step="0.1" required></label>
+            <label>Khẩn cấp<input name="emergency_rate_cm_min" type="number" min="0.3" max="200" step="0.1" required></label>
+          </div>
+          <div class="button-row">
+            <button id="start-rising" type="button" class="button primary">▶ Nước dâng</button>
+            <button id="start-falling" type="button" class="button secondary">↓ Nước hạ</button>
+          </div>
+          <div class="button-row">
+            <button id="pause" type="button" class="button ghost">Ⅱ Tạm dừng</button>
+            <button id="apply-control" type="submit" class="button dark">Áp dụng số đo</button>
+          </div>
+          <div class="button-row">
+            <button id="rain-tip" type="button" class="button rain">☔ Ghi một nhịp mưa</button>
+            <button id="reset" type="button" class="button ghost">Đặt lại</button>
+          </div>
+          <div id="control-message" class="control-message" role="status"></div>
+        </form>
+        <div class="small muted form-footnote">Thay đổi tại web được lưu và đồng bộ ngay sang app. Vượt ngưỡng cần 3 mẫu; hạ cấp cần thấp hơn ngưỡng 5 cm qua 4 mẫu.</div>
+      </section>
+    </aside>
+
+    <section class="main-column">
+      <section class="panel diagram-panel">
+        <div class="section-heading diagram-heading">
+          <div><div class="eyebrow">SƠ ĐỒ PHẦN CỨNG</div><h1>ESP32 · Cảm biến · Cảnh báo tại trạm</h1></div>
+          <div class="schematic-legend"><span><i class="wire red"></i>Nguồn</span><span><i class="wire green"></i>Tín hiệu</span><span><i class="wire black"></i>GND</span></div>
+        </div>
+        <div class="diagram-scroll"><svg id="diagram" viewBox="0 0 1160 700" role="img" aria-label="Sơ đồ ESP32, cảm biến siêu âm, cảm biến mưa, nhiệt độ, LED và còi"></svg></div>
+        <div class="component-status">
+          <span><i id="led-indicator" class="device-dot normal"></i> LED cảnh báo</span>
+          <span><i id="buzzer-indicator" class="device-dot normal"></i> Còi báo động</span>
+          <span><i class="device-dot active"></i> ESP32 đang chạy</span>
+          <span id="last-updated" class="muted small">Chưa nhận dữ liệu</span>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="section-heading log-heading"><div><div class="eyebrow">NHẬT KÝ ĐO</div><h2>Số liệu đã lưu trên máy chủ</h2></div><button id="refresh-log" class="button ghost small-button">Làm mới</button></div>
+        <div class="table-wrap">
+          <table><thead><tr><th>Thời gian nhận</th><th>Mực nước</th><th>Khoảng cách siêu âm</th><th>Mưa</th><th>Nhiệt độ</th><th>Cấp cảnh báo</th></tr></thead><tbody id="log-rows"><tr><td colspan="6" class="empty">Đang tải nhật ký…</td></tr></tbody></table>
+        </div>
+        <div id="log-retention" class="muted small">Nhật ký demo được giữ tối đa 7 ngày.</div>
+      </section>
+      <footer>OpenStreetMap không sử dụng tại trang này. Dữ liệu trong bảng điều khiển là mô phỏng phần cứng theo sơ đồ Wokwi của project, không phải phép đo ngoài thực địa.</footer>
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="/iot/app.js" defer></script>
+</body>
+</html>

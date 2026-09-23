@@ -7,12 +7,21 @@ import '../data/fwa_repository.dart';
 import '../models.dart';
 
 class DashboardController extends ChangeNotifier {
-  DashboardController(this.repository, {this.saveBaseUrl});
+  DashboardController(
+    this.repository, {
+    this.saveBaseUrl,
+    this.requireRegionSelection = false,
+    String? initialStationId,
+  }) : selectedId = initialStationId;
   final FwaRepository repository;
   final Future<void> Function(String)? saveBaseUrl;
+  final bool requireRegionSelection;
   List<Station> stations = const [];
   List<TelemetryPoint> history = const [];
   List<AlertEvent> alerts = const [];
+  DemoControl? demoControl;
+  AlertEvent? incomingAlert;
+  String? _pendingLiveAlertId;
   String? selectedId;
   String? error;
   String? errorDetails;
@@ -48,6 +57,9 @@ class DashboardController extends ChangeNotifier {
     selectedId = id;
     history = const [];
     alerts = const [];
+    demoControl = null;
+    incomingAlert = null;
+    _pendingLiveAlertId = null;
     notifyListeners();
     unawaited(refresh());
   }
@@ -82,10 +94,12 @@ class DashboardController extends ChangeNotifier {
     previousChannel?.sink.close();
     streamOnline = false;
     repository.baseUrl = value;
-    selectedId = null;
+    if (!requireRegionSelection) selectedId = null;
     stations = const [];
     history = const [];
     alerts = const [];
+    demoControl = null;
+    incomingAlert = null;
     loading = true;
     error = null;
     errorDetails = null;
@@ -110,8 +124,9 @@ class DashboardController extends ChangeNotifier {
         return;
       }
       stations = updated;
-      if (selectedId == null ||
-          !updated.any((station) => station.id == selectedId)) {
+      if (!requireRegionSelection &&
+          (selectedId == null ||
+              !updated.any((station) => station.id == selectedId))) {
         final activePhysical = updated.where(
           (station) => !station.isSimulated && station.hasData,
         );
@@ -126,17 +141,43 @@ class DashboardController extends ChangeNotifier {
                       ?.id ??
                   updated.firstOrNull?.id;
       }
-      if (selectedId != null) {
-        final results = await Future.wait([
+      if (selectedId != null &&
+          updated.any((station) => station.id == selectedId)) {
+        final requests = <Future<Object>>[
           repository.telemetry(selectedId!),
           repository.alerts(selectedId!),
-        ]);
+        ];
+        final controlRepository = repository is DemoControlRepository
+            ? repository as DemoControlRepository
+            : null;
+        final controlIndex = controlRepository == null ? -1 : requests.length;
+        if (controlRepository != null) {
+          requests.add(controlRepository.demoControl(selectedId!));
+        }
+        final results = await Future.wait(requests);
         if (generation != _configGeneration) {
           _pending = true;
           return;
         }
         history = results[0] as List<TelemetryPoint>;
         alerts = results[1] as List<AlertEvent>;
+        if (controlIndex >= 0) {
+          demoControl = results[controlIndex] as DemoControl;
+        }
+        final pendingId = _pendingLiveAlertId;
+        if (pendingId != null) {
+          for (final alert in alerts) {
+            if (alert.id == pendingId && alert.stationId == selectedId) {
+              incomingAlert = alert;
+              break;
+            }
+          }
+          _pendingLiveAlertId = null;
+        }
+      } else if (requireRegionSelection) {
+        history = const [];
+        alerts = const [];
+        demoControl = null;
       }
       error = null;
       errorDetails = null;
@@ -153,6 +194,27 @@ class DashboardController extends ChangeNotifier {
         unawaited(refresh());
       }
     }
+  }
+
+  Future<void> updateDemoControl(Map<String, dynamic> patch) async {
+    final id = selectedId;
+    final controlRepository = repository is DemoControlRepository
+        ? repository as DemoControlRepository
+        : null;
+    if (id == null || controlRepository == null) {
+      throw StateError(
+        'Cảm biến mô phỏng chưa được chọn hoặc API chưa hỗ trợ điều khiển.',
+      );
+    }
+    demoControl = await controlRepository.updateDemoControl(id, patch);
+    notifyListeners();
+    await refresh();
+  }
+
+  AlertEvent? consumeIncomingAlert() {
+    final alert = incomingAlert;
+    incomingAlert = null;
+    return alert;
   }
 
   void _openStream() {
@@ -179,7 +241,20 @@ class DashboardController extends ChangeNotifier {
           if (_closed) return;
           try {
             final data = jsonDecode(event as String) as Map<String, dynamic>;
-            if (data['event'] is String) unawaited(refresh());
+            final eventName = data['event'];
+            final eventData = data['data'];
+            if (eventName == 'station.alert' && eventData is Map) {
+              if (eventData['station_id'] == selectedId &&
+                  eventData['alert_id'] is String) {
+                _pendingLiveAlertId = eventData['alert_id'] as String;
+              }
+            }
+            if (eventName is String &&
+                (!requireRegionSelection ||
+                    (eventData is Map &&
+                        eventData['station_id'] == selectedId))) {
+              unawaited(refresh());
+            }
           } catch (_) {
             /* Bỏ frame lỗi; REST polling vẫn hoạt động. */
           }

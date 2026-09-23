@@ -1,8 +1,8 @@
-# Đề xuất sau PoC: Bản đồ cảnh báo lũ & Phân vùng người dùng
+# Bản đồ cảnh báo lũ & Phân vùng người dùng
 
-> **Đề xuất sau PoC, chưa được phê duyệt hoặc triển khai.** P0 chỉ có một trạm; theo kế hoạch, bản đồ nhiều trạm/mini-map là P1 và phải có vị trí đã xác minh. Chọn vùng, lọc cảnh báo theo vùng và mở rộng sang nhiều trạm cần change request. Các địa danh, tọa độ và H0 dưới đây chỉ là ví dụ minh họa, chưa được khảo sát hay xác nhận với đơn vị địa phương; không dùng để lắp đặt, điều hướng hoặc phát cảnh báo thật.
+> **Cập nhật 2026-09:** Đã triển khai web sơ đồ IoT, backend simulator dùng chung và tab bản đồ Flutter. Có đúng một cảm biến mô phỏng cho mỗi lưu vực (Thao–Chảy, Hương–Bồ, Vu Gia–Thu Bồn); người dùng phải chọn vùng trước khi xem số đo/nhận thông báo trong app. Web/app cùng đọc và sửa một cấu hình server-side; mẫu và alert được lưu trong PostgreSQL. Sơ đồ web lấy linh kiện/dây nối từ `backend/public/diagram.json`. Giá trị và tọa độ không đến từ cảm biến thật; không dùng để lắp đặt, điều hướng hoặc phát cảnh báo ngoài thực địa. Phần dưới đây giữ lại các đề xuất mở rộng cho sản phẩm sau demo; các yêu cầu đó chưa được triển khai.
 
-Tài liệu này là bản thảo để xem xét change request sau khi nghiệm thu P0; chưa phải yêu cầu đã duyệt và chưa phải căn cứ kỹ thuật/địa lý để lắp đặt.
+Các vị trí trong tài liệu này chỉ là ví dụ minh họa, chưa được khảo sát hoặc xác nhận với đơn vị địa phương và không phải căn cứ kỹ thuật/địa lý để lắp đặt.
 
 ---
 

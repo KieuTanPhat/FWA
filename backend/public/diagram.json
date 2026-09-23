@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "author": "FWA Team",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-hc-sr04",
+      "id": "ultrasonic",
+      "top": -140,
+      "left": -60,
+      "attrs": { "distance": "50" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 40,
+      "left": 220,
+      "attrs": { "volume": "0.5" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_alert",
+      "top": -60,
+      "left": 220,
+      "attrs": { "color": "red", "label": "CẢNH BÁO" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_led",
+      "top": -30,
+      "left": 160,
+      "attrs": { "value": "330" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "rain_gauge",
+      "top": 140,
+      "left": 220,
+      "attrs": { "color": "blue", "label": "GẦU LẬT MƯA" }
+    },
+    {
+      "type": "wokwi-ds18b20",
+      "id": "temp_sensor",
+      "top": 140,
+      "left": -80,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_temp",
+      "top": 90,
+      "left": -60,
+      "attrs": { "value": "4700" }
+    }
+  ],
+  "connections": [
+    [ "esp:GND.1", "ultrasonic:GND", "black", [ "h-20", "v-80" ] ],
+    [ "esp:5V", "ultrasonic:VCC", "red", [ "h-30", "v-90" ] ],
+    [ "esp:16", "ultrasonic:ECHO", "green", [ "h-10", "v-40" ] ],
+    [ "esp:17", "ultrasonic:TRIG", "blue", [ "h-10", "v-40" ] ],
+
+    [ "esp:27", "r_led:1", "orange", [ "h20" ] ],
+    [ "r_led:2", "led_alert:A", "orange", [ "h20" ] ],
+    [ "led_alert:C", "esp:GND.2", "black", [ "v40", "h-60" ] ],
+
+    [ "esp:14", "buzzer:2", "purple", [ "h30" ] ],
+    [ "buzzer:1", "esp:GND.2", "black", [ "v30", "h-70" ] ],
+
+    [ "esp:25", "rain_gauge:2.1", "cyan", [ "h40", "v50" ] ],
+    [ "rain_gauge:1.1", "esp:GND.2", "black", [ "v20", "h-80" ] ],
+
+    [ "esp:3V3", "temp_sensor:VCC", "red", [ "h-40", "v60" ] ],
+    [ "esp:GND.1", "temp_sensor:GND", "black", [ "h-30", "v50" ] ],
+    [ "esp:26", "temp_sensor:DQ", "yellow", [ "h-20", "v40" ] ],
+    [ "esp:3V3", "r_temp:1", "red", [ "h-35", "v40" ] ],
+    [ "r_temp:2", "temp_sensor:DQ", "yellow", [ "h10", "v20" ] ]
+  ],
+  "dependencies": {}
+}

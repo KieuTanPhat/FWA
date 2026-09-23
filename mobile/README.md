@@ -1,6 +1,6 @@
 # Ứng dụng Flutter Android
 
-Ứng dụng chỉ đọc dữ liệu của hệ thống IoT. Còi/đèn và cấp cảnh báo được quyết định trên ESP32. App tải REST và nhận sự kiện WebSocket từ backend; không có credential MQTT hay lệnh điều khiển trạm.
+Ứng dụng Android tải telemetry, lịch sử và alert qua REST/WebSocket. Người dùng phải chọn một trong ba vùng trước khi vào app; số liệu và thông báo trong app chỉ theo station của vùng đó. Các nút trên tab Bản đồ chỉ điều khiển station mô phỏng trên backend, không gửi lệnh tới ESP32 vật lý. Còi/đèn phần cứng vẫn do firmware tại trạm quyết định.
 
 ## Chạy và cài APK demo
 
@@ -22,12 +22,22 @@ flutter build apk --debug --dart-define=API_BASE_URL=http://<IP-LAN>:3000
 
 File sinh tại `build/app/outputs/flutter-apk/app-debug.apk`. URL trong `API_BASE_URL` là giá trị mặc định; có thể đổi và lưu địa chỉ backend ngay trong app bằng nút cài đặt ở thanh trên. Bản debug cho phép HTTP trong LAN demo. Bản release chỉ nhận HTTPS và cần cấu hình khóa ký riêng trước khi phát hành.
 
+Tạo APK release gọn theo kiến trúc:
+
+```powershell
+flutter build apk --release --split-per-abi
+```
+
+Máy Android ARM64 dùng `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`; máy ARM 32-bit dùng `app-armeabi-v7a-release.apk`.
+
 ## Quy tắc hiển thị
 
 - `SIMULATED` luôn có nhãn **MÔ PHỎNG** ở trang trạm/sự kiện.
 - Khi dữ liệu quá 15 giây hoặc không tới API, mức hiện tại là **Không xác định**; cấp cũ và số đo cũ chỉ ghi là “lần ghi nhận cuối”.
 - Chất lượng nước, trạng thái liên kết và độ mới là các nhãn tách biệt.
 - Mất WebSocket thì REST vẫn tải lại theo chu kỳ; thông tin kết nối có ở tab **Kết nối**.
+- Cảnh báo mới của vùng đang chọn hiện trong app khi app đang mở; lịch sử alert nằm ở tab **Sự kiện**.
+- Thông báo hệ điều hành ở nền/màn hình khóa chưa được cấu hình. Không hứa gửi cảnh báo khi app tắt hoặc trạm mất uplink; còi/đèn tại trạm vẫn là vòng cảnh báo cốt lõi.
 - Không hứa gửi cảnh báo tới điện thoại khi trạm mất uplink. Còi/đèn tại trạm vẫn là vòng cảnh báo cốt lõi.
 
 ## Yêu cầu cảnh báo khẩn cấp (Full-screen & Haptic Alert)
@@ -52,19 +62,14 @@ Khi mực nước đạt ngưỡng **Khẩn cấp (EMERGENCY)**, ứng dụng c�
 - Sử dụng Android Notification Channel mức ưu tiên cao nhất (`Importance.max` / `Priority.high`).
 - Cấu hình `fullScreenIntent` để tự động bật sáng màn hình và hiển thị pop-up cảnh báo ngay trên màn hình khóa điện thoại.
 
-## Yêu cầu Bản đồ cảnh báo lũ & Phân vùng người dùng (GIS Map & Zones)
+## Bản đồ demo và điều khiển cảm biến mô phỏng
 
-Xem chi tiết đầy đủ tại tài liệu kiến trúc [docs/map-and-zone-spec.md](../docs/map-and-zone-spec.md).
+### Vùng đang hỗ trợ
 
-### 1. Phân vùng người dùng (Zone Onboarding)
-- Ứng dụng giới hạn phục vụ theo từng tiểu vùng địa lý trọng điểm có nguy cơ ngập lụt thực tế (ví dụ: các xã/phường thuộc lưu vực sông Vu Gia – Thu Bồn).
-- Người dùng khi khởi động ứng dụng lần đầu bắt buộc phải chọn **Khu vực sinh sống / Khu vực quan sát** (lưu vào `SharedPreferences`).
-- Bộ lọc thông báo chỉ kích hoạt **Rung dồn dập & Pop-up toàn màn hình khẩn cấp** đối với các trạm thuộc hoặc ảnh hưởng trực tiếp đến khu vực người dùng đã chọn.
+- `sim-01`: Thao–Chảy · Yên Bái/Lào Cai.
+- `sim-02`: Hương–Bồ · Huế.
+- `sim-03`: Vu Gia–Thu Bồn · Đà Nẵng/Quảng Nam cũ.
 
-### 2. Bản đồ số GIS & Bố trí cảm biến thực tế
-- Tích hợp bản đồ OpenStreetMap qua thư viện `flutter_map` (không tốn phí API key).
-- Hiển thị các Marker trạm quan trắc với màu sắc tương ứng mức rủi ro thời gian thực (Xanh, Vàng, Cam, Đỏ, Xám).
-- **Quy tắc bố trí cảm biến thực tế (Không đặt phi lý)**:
-  - Cảm biến siêu âm A02YYUW bắt buộc gắn vuông góc hướng xuống mặt nước trên các kết cấu kiên cố: **Dầm cầu vượt sông**, **Cửa cống hộp ngăn triều / xả lũ**, hoặc **Kè đập tràn bê tông**.
-  - Tuyệt đối không đặt cảm biến trên ngọn cây, trong nhà dân hay giữa mặt đường nhựa.
-  - Các trạm mô phỏng (`sim-01`, `sim-02`...) được gắn tọa độ GPS tại các điểm xung yếu thủy văn thật ở thượng lưu và cửa sông để mô phỏng dòng chảy lũ dâng thực tế.
+Mỗi vùng hiện có đúng một sensor mô phỏng. Người dùng chọn vùng lần đầu; lựa chọn lưu trong `SharedPreferences`. Tab Bản đồ hiển thị một marker OpenStreetMap và số liệu mới nhất từ backend. Slider mực nước, nút ghi nhịp mưa, nước dâng/hạ và đặt lại gọi chung API với web IoT; mọi thay đổi được lưu thành telemetry.
+
+Các tọa độ chỉ là pin tham khảo. Số đo, nhiệt độ, mưa và cảnh báo do server simulator tạo theo sơ đồ trong `backend/public/diagram.json`; đây không phải cảm biến lắp tại các địa điểm đó hoặc dữ liệu quan trắc thực tế.
