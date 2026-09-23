@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+coverage/
+*.log
+infra/mosquitto/passwd
+infra/postgres/data/
+.pio/
+.dart_tool/
+.flutter-plugins*
+.idea/
+.vscode/
+*.apk
+*.aab
+
