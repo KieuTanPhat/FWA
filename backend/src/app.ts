@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Inject, Module, NotFoundException, Param, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Inject, Module, NotFoundException, Param, Provider, Query } from '@nestjs/common';
 import { Database } from './database';
 import { MqttIngest } from './mqtt-ingest';
 import { Stream } from './stream';
@@ -52,5 +52,8 @@ class ApiController {
   }
 }
 
-@Module({ controllers: [ApiController], providers: [Database, Stream, MqttIngest], exports: [Stream] })
+const providers: Provider[] = [Database, Stream];
+if (process.env.MQTT_ENABLED !== 'false') providers.push(MqttIngest);
+
+@Module({ controllers: [ApiController], providers, exports: [Stream] })
 export class AppModule {}
