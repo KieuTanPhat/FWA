@@ -262,6 +262,38 @@ async function sendPatch(body) {
   }
 }
 
+function validateThresholds(body) {
+  const water = [body.watch_cm, body.warning_cm, body.emergency_cm];
+  const rate = [body.watch_rate_cm_min, body.warning_rate_cm_min, body.emergency_rate_cm_min];
+  if (water[1] - water[0] < 5 || water[2] - water[1] < 5) {
+    showError('Các ngưỡng mực nước cần cách nhau ít nhất 5 cm để tránh đổi mức liên tục.');
+    return false;
+  }
+  if (rate[1] - rate[0] < 1 || rate[2] - rate[1] < 1) {
+    showError('Các ngưỡng tốc độ dâng cần cách nhau ít nhất 1 cm/phút.');
+    return false;
+  }
+  return true;
+}
+
+function confirmThresholdChanges(body) {
+  const labels = {
+    watch_cm: 'Theo dõi (mực nước)', warning_cm: 'Cảnh báo (mực nước)', emergency_cm: 'Khẩn cấp (mực nước)',
+    watch_rate_cm_min: 'Theo dõi (tốc độ)', warning_rate_cm_min: 'Cảnh báo (tốc độ)', emergency_rate_cm_min: 'Khẩn cấp (tốc độ)',
+  };
+  const changed = Object.keys(labels).filter(name =>
+    Math.abs(Number(body[name]) - Number(state.control[name])) >= 0.05,
+  );
+  if (changed.length === 0) return true;
+  const lines = changed.map(name => {
+    const unit = name.endsWith('_cm') ? 'cm' : 'cm/phút';
+    return `• ${labels[name]}: ${Number(state.control[name]).toFixed(1)} → ${Number(body[name]).toFixed(1)} ${unit}`;
+  });
+  return window.confirm(
+    `Xác nhận thay đổi ngưỡng cảnh báo cho ${state.region.name}?\n\n${lines.join('\n')}\n\nBạn đã kiểm tra các mức mới và muốn áp dụng chứ?`,
+  );
+}
+
 function setButtonsDisabled(value) {
   document.querySelectorAll('button').forEach(button => { button.disabled = value; });
 }
@@ -315,6 +347,7 @@ async function init() {
       body[name] = Number(form.get(name));
     }
     $('#control-message').classList.remove('error');
+    if (!validateThresholds(body) || !confirmThresholdChanges(body)) return;
     try { await sendPatch(body); } catch (error) { showError(error); }
   });
   $('#start-rising').addEventListener('click', () => sendPatch({ direction: 'RISING', running: true }).catch(showError));

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Database } from './database';
 import { demoRegions, isDemoStation } from './demo-regions';
@@ -128,14 +128,21 @@ export class DemoSimulator implements OnModuleInit, OnModuleDestroy {
         clear_samples: reset ? 0 : current.clear_samples,
       };
       if (!(next.watch_cm < next.warning_cm && next.warning_cm < next.emergency_cm)) {
-        throw new Error('Ngưỡng phải tăng theo thứ tự Theo dõi < Cảnh báo < Khẩn cấp.');
+        throw new BadRequestException('Ngưỡng phải tăng theo thứ tự Theo dõi < Cảnh báo < Khẩn cấp.');
+      }
+      if (next.warning_cm - next.watch_cm < 5 || next.emergency_cm - next.warning_cm < 5) {
+        throw new BadRequestException('Các ngưỡng mực nước cần cách nhau ít nhất 5 cm.');
       }
       if (!(next.watch_rate_cm_min < next.warning_rate_cm_min &&
           next.warning_rate_cm_min < next.emergency_rate_cm_min)) {
-        throw new Error('Ngưỡng tốc độ phải tăng theo thứ tự Theo dõi < Cảnh báo < Khẩn cấp.');
+        throw new BadRequestException('Ngưỡng tốc độ phải tăng theo thứ tự Theo dõi < Cảnh báo < Khẩn cấp.');
+      }
+      if (next.warning_rate_cm_min - next.watch_rate_cm_min < 1 ||
+          next.emergency_rate_cm_min - next.warning_rate_cm_min < 1) {
+        throw new BadRequestException('Các ngưỡng tốc độ cần cách nhau ít nhất 1 cm/phút.');
       }
       if (next.water_level_cm < next.baseline_water_cm) {
-        throw new Error('Mực nước không thể thấp hơn mốc nền của kịch bản.');
+        throw new BadRequestException('Mực nước không thể thấp hơn mốc nền của kịch bản.');
       }
       if (patch.direction === 'HOLD' && patch.running === undefined && !reset) next.running = false;
       if ((patch.direction === 'RISING' || patch.direction === 'FALLING') && patch.running === undefined && !reset) {
