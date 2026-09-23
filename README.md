@@ -18,9 +18,9 @@ Xem [runbook](docs/runbook.md) để khởi động demo. Dự án là prototype
 
 ## Giao diện ứng dụng
 
-Mở web tại `/iot`. Sơ đồ SVG lấy trực tiếp danh sách linh kiện và dây nối từ `backend/public/diagram.json`, bản triển khai đi cùng `diagram.json` của project. Có một cảm biến mô phỏng cho mỗi lưu vực: `sim-01` Thao–Chảy, `sim-02` Hương–Bồ, `sim-03` Vu Gia–Thu Bồn. Số đo mặc định lưu mỗi 5 giây vào PostgreSQL; WebSocket đồng bộ web/app, REST trả lịch sử. Web cho phép đổi mực nước, tốc độ mô phỏng, mưa, nhiệt độ, ngưỡng mực nước và ngưỡng tốc độ dâng. Tốc độ cm/phút được quy đổi theo chu kỳ 5 giây. Ngưỡng tốc độ mặc định 5/10/15 cm/phút; cần 3 mẫu để nâng cấp, hysteresis 5 cm và 4 mẫu để hạ cấp theo cấu hình firmware.
+Mở web tại `/iot`. Sơ đồ SVG lấy trực tiếp danh sách linh kiện và dây nối từ `backend/public/diagram.json`. Có một cảm biến mô phỏng cho mỗi lưu vực: `sim-01` Thao–Chảy, `sim-02` Hương–Bồ, `sim-03` Vu Gia–Thu Bồn. Số đo được ghi mỗi 5 giây vào PostgreSQL; REST/WebSocket cấp dữ liệu cho web và app. Chỉ web IoT có thể thay đổi số đo và ngưỡng. Khi sửa ngưỡng, web yêu cầu xác nhận; nước cần cách nhau tối thiểu 5 cm, tốc độ dâng cách nhau tối thiểu 1 cm/phút. Mặc định các mức nước là 30/50/70 cm, tốc độ là 5/10/15 cm/phút; mức tăng cần 3 mẫu liên tiếp, mức giảm cần qua vùng hồi phục 5 cm trong 4 mẫu.
 
-Trong app người dùng phải chọn một vùng khi mở lần đầu; bản đồ, nhật ký và thông báo trong app chỉ theo cảm biến của vùng đã chọn. Điều chỉnh mực nước hoặc ghi nhịp mưa từ app đi vào cùng backend nên cũng hiện trên web. Ba mức mặc định là 30/50/70 cm; cần 3 mẫu để nâng cấp, hysteresis 5 cm và 4 mẫu để hạ cấp. Tọa độ bản đồ là vị trí tham khảo. Đây là dữ liệu mô phỏng, không phải cảnh báo thực tế.
+Trong app người dùng chọn một vùng khi mở lần đầu; bản đồ, nhật ký, số đo và thông báo chỉ hiển thị cảm biến của vùng đó. App chỉ đọc, không thay đổi số đo hay ngưỡng. Bản đồ dùng nền OpenStreetMap; vị trí cảm biến chỉ minh họa. App hiển thị mực nước hiện tại và ước tính tuyến tính theo tốc độ đo gần đây cho các mốc tới hạn, không phải dự báo thời tiết. Mức **Khẩn cấp** có thông báo ưu tiên cao, rung/âm báo và màn hình cảnh báo toàn màn hình nếu quyền Android đã được bật. Số liệu toàn hệ thống là mô phỏng, không phải cảnh báo thực tế.
 
 Để tạo APK release nhỏ theo kiến trúc thiết bị, chạy trong `mobile/`:
 

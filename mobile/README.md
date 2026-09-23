@@ -1,6 +1,6 @@
 # Ứng dụng Flutter Android
 
-Ứng dụng Android tải telemetry, lịch sử và alert qua REST/WebSocket. Người dùng phải chọn một trong ba vùng trước khi vào app; số liệu và thông báo trong app chỉ theo station của vùng đó. Các nút trên tab Bản đồ chỉ điều khiển station mô phỏng trên backend, không gửi lệnh tới ESP32 vật lý. Còi/đèn phần cứng vẫn do firmware tại trạm quyết định.
+Ứng dụng Android chỉ đọc số đo, lịch sử và cảnh báo qua REST/WebSocket. Người dùng phải chọn một trong ba vùng trước khi vào app; nội dung chỉ theo cảm biến mô phỏng của vùng đó. App không có chức năng điều chỉnh số đo hoặc ngưỡng. Chỉ bàn điều khiển web IoT mới ghi thay đổi về backend.
 
 ## Chạy và cài APK demo
 
@@ -12,15 +12,15 @@ flutter test
 flutter run --debug --dart-define=API_BASE_URL=http://10.0.2.2:3000
 ```
 
-`10.0.2.2` dùng **chỉ cho Android emulator**. Điện thoại thật phải dùng IP LAN của máy chạy backend, ví dụ `--dart-define=API_BASE_URL=http://192.168.1.10:3000`. Backend cần lắng nghe trên IP LAN và firewall cho phép cổng 3000 trong mạng demo riêng. Không dùng `localhost` trên điện thoại để trỏ tới laptop.
+App dùng Render làm địa chỉ mặc định. Muốn chạy với backend local trên **Android emulator**, dùng `--dart-define=API_BASE_URL=http://10.0.2.2:3000`. Điện thoại thật trong mạng demo riêng có thể build với `--dart-define=API_BASE_URL=http://<IP-LAN-MÁY-BACKEND>:3000`; backend phải lắng nghe trên IP LAN. Không dùng `localhost` trên điện thoại để trỏ tới laptop.
 
 Tạo APK Android để cài trên emulator hoặc điện thoại:
 
 ```powershell
-flutter build apk --debug --dart-define=API_BASE_URL=http://<IP-LAN>:3000
+flutter build apk --debug
 ```
 
-File sinh tại `build/app/outputs/flutter-apk/app-debug.apk`. URL trong `API_BASE_URL` là giá trị mặc định; có thể đổi và lưu địa chỉ backend ngay trong app bằng nút cài đặt ở thanh trên. Bản debug cho phép HTTP trong LAN demo. Bản release chỉ nhận HTTPS và cần cấu hình khóa ký riêng trước khi phát hành.
+File sinh tại `build/app/outputs/flutter-apk/app-debug.apk`. URL API chỉ cấu hình lúc build; người dùng không thể đổi URL trong app. Bản debug cho phép HTTP trong LAN demo.
 
 Tạo APK release gọn theo kiến trúc:
 
@@ -28,41 +28,27 @@ Tạo APK release gọn theo kiến trúc:
 flutter build apk --release --split-per-abi
 ```
 
-Máy Android ARM64 dùng `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`; máy ARM 32-bit dùng `app-armeabi-v7a-release.apk`.
+Máy Android ARM64 dùng `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`; máy ARM 32-bit dùng `app-armeabi-v7a-release.apk`. Release hiện dùng khóa debug của dự án để cài demo; cần khóa ký phát hành riêng trước khi đưa lên Google Play.
 
 ## Quy tắc hiển thị
 
 - `SIMULATED` luôn có nhãn **MÔ PHỎNG** ở trang trạm/sự kiện.
 - Khi dữ liệu quá 15 giây hoặc không tới API, mức hiện tại là **Không xác định**; cấp cũ và số đo cũ chỉ ghi là “lần ghi nhận cuối”.
-- Chất lượng nước, trạng thái liên kết và độ mới là các nhãn tách biệt.
-- Mất WebSocket thì REST vẫn tải lại theo chu kỳ; thông tin kết nối có ở tab **Kết nối**.
-- Cảnh báo mới của vùng đang chọn hiện trong app khi app đang mở; lịch sử alert nằm ở tab **Sự kiện**.
-- Thông báo hệ điều hành ở nền/màn hình khóa chưa được cấu hình. Không hứa gửi cảnh báo khi app tắt hoặc trạm mất uplink; còi/đèn tại trạm vẫn là vòng cảnh báo cốt lõi.
-- Không hứa gửi cảnh báo tới điện thoại khi trạm mất uplink. Còi/đèn tại trạm vẫn là vòng cảnh báo cốt lõi.
+- Chất lượng nước, trạng thái kết nối và độ mới là các nhãn riêng.
+- Mất WebSocket thì REST vẫn tải lại theo chu kỳ; nhật ký alert nằm ở tab **Sự kiện**.
+- App hiển thị mực nước hiện tại và ước tính tuyến tính theo tốc độ đo gần đây tại các mốc 1, 3, 6, 12 giờ và 1 ngày; đây không phải dự báo thời tiết.
+- Mức cảnh báo có bốn trạng thái: **Bình thường**, **Theo dõi**, **Cảnh báo**, **Khẩn cấp**.
 
-## Yêu cầu cảnh báo khẩn cấp (Full-screen & Haptic Alert)
+## Cảnh báo khẩn cấp
 
-Khi mực nước đạt ngưỡng **Khẩn cấp (EMERGENCY)**, ứng dụng cần thực hiện quy trình cảnh báo đặc biệt để đảm bảo người dùng nhận biết ngay lập tức:
+Khi vùng đã chọn chuyển sang **Khẩn cấp (EMERGENCY)**, app mở màn hình cảnh báo và phát một thông báo Android ưu tiên cao với rung/âm báo. Màn hình có khu vực, trạm, mực nước gần nhất, thời điểm ghi nhận và nút **Đã nhận cảnh báo**.
 
-### 1. Hiển thị cảnh báo toàn màn hình (Full-Screen Overlay Dialog)
-- **Kích hoạt (Trigger)**: Khi nhận dữ liệu WebSocket hoặc cập nhật REST có trạng thái chuyển cấp sang `EMERGENCY`.
-- **Giao diện**:
-  - Phủ toàn màn hình với tông màu báo động khẩn cấp (Đỏ `#B22632`).
-  - Biểu tượng cảnh báo nguy hiểm kích thước lớn, tiêu đề chữ đậm: **CẢNH BÁO LŨ KHẨN CẤP**.
-  - Hiển thị rõ: **Tên trạm**, **Mực nước hiện tại (cm)**, **Thời điểm đo** và nhãn nguồn dữ liệu (**THIẾT BỊ THẬT** hoặc **MÔ PHỎNG**).
-  - Khuyến nghị an toàn: Yêu cầu người dân sơ tán khẩn cấp lên vùng cao an toàn.
-  - Nút bấm xác nhận: **"ĐÃ TIẾP NHẬN / TẮT BÁO ĐỘNG"** để người dùng tắt rung và đóng màn hình khẩn cấp.
+### Khi màn hình khóa
+- Android Notification Channel dùng mức ưu tiên cao, âm báo động và mẫu rung. `fullScreenIntent` yêu cầu Activity hiển thị trên màn hình khóa và bật sáng màn hình.
+- Android 13+ cần người dùng cho phép thông báo. Android 14+ có thể cần bật thêm quyền thông báo toàn màn hình trong Cài đặt ứng dụng; nếu quyền không được cấp, Android có thể chỉ hiện thông báo thường.
+- Cảnh báo điện thoại cần app còn được Android chạy nền và có kết nối tới backend. Force-stop, mất mạng hoặc chính sách tiết kiệm pin có thể ngăn app nhận sự kiện; demo chưa tích hợp push notification từ cloud.
 
-### 2. Cơ chế Rung phản hồi (Haptic Vibration)
-- **Quyền Android**: Bổ sung quyền `<uses-permission android:name="android.permission.VIBRATE" />` trong `AndroidManifest.xml`.
-- **Mẫu rung (Vibration Pattern)**: Rung ngắt quãng dồn dập cảnh báo khẩn cấp (Ví dụ: Rung 500ms - Nghỉ 200ms - Rung 500ms - Nghỉ 500ms) lặp lại liên tục cho đến khi người dùng bấm xác nhận tiếp nhận cảnh báo hoặc sau thời gian timeout (tối đa 60 giây).
-- **Âm thanh (Tùy chọn nâng cao)**: Phát chuông cảnh báo âm lượng tối đa theo kênh thông báo ưu tiên cao (`Alarm/Notification Stream`).
-
-### 3. Cảnh báo khi màn hình tắt / Ứng dụng chạy nền (Background Notification)
-- Sử dụng Android Notification Channel mức ưu tiên cao nhất (`Importance.max` / `Priority.high`).
-- Cấu hình `fullScreenIntent` để tự động bật sáng màn hình và hiển thị pop-up cảnh báo ngay trên màn hình khóa điện thoại.
-
-## Bản đồ demo và điều khiển cảm biến mô phỏng
+## Bản đồ và số đo mô phỏng
 
 ### Vùng đang hỗ trợ
 
@@ -70,6 +56,6 @@ Khi mực nước đạt ngưỡng **Khẩn cấp (EMERGENCY)**, ứng dụng c�
 - `sim-02`: Hương–Bồ · Huế.
 - `sim-03`: Vu Gia–Thu Bồn · Đà Nẵng/Quảng Nam cũ.
 
-Mỗi vùng hiện có đúng một sensor mô phỏng. Người dùng chọn vùng lần đầu; lựa chọn lưu trong `SharedPreferences`. Tab Bản đồ hiển thị một marker OpenStreetMap và số liệu mới nhất từ backend. Slider mực nước, nút ghi nhịp mưa, nước dâng/hạ và đặt lại gọi chung API với web IoT; mọi thay đổi được lưu thành telemetry.
+Mỗi vùng hiện có đúng một cảm biến mô phỏng. Người dùng chọn vùng lần đầu; lựa chọn lưu trong `SharedPreferences`. Tab Bản đồ dùng nền OpenStreetMap, marker minh họa và số đo mới nhất. App chỉ đọc; slider và nút đổi số đo/ghi nhịp mưa chỉ có trên web IoT.
 
 Các tọa độ chỉ là pin tham khảo. Số đo, nhiệt độ, mưa và cảnh báo do server simulator tạo theo sơ đồ trong `backend/public/diagram.json`; đây không phải cảm biến lắp tại các địa điểm đó hoặc dữ liệu quan trắc thực tế.
