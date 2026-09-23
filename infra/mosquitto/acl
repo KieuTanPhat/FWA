@@ -1,0 +1,18 @@
+user backend
+topic read flood/+/telemetry
+topic read flood/+/alert
+topic read flood/+/status
+topic write flood/+/alert/ack
+
+user sim-01
+topic write flood/sim-01/telemetry
+topic write flood/sim-01/alert
+topic write flood/sim-01/status
+topic read flood/sim-01/alert/ack
+
+user station-01
+topic write flood/station-01/telemetry
+topic write flood/station-01/alert
+topic write flood/station-01/status
+topic read flood/station-01/alert/ack
+
