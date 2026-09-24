@@ -13,6 +13,12 @@ Web điều khiển IoT ở `http://localhost:3000/iot`. Nó vẽ từ `public/d
 
 API gồm `/healthz`, `/api/v1/stations`, `/api/v1/stations/:id/latest`, `/api/v1/stations/:id/telemetry?limit=50`, `/api/v1/alerts?station_id=sim-01&limit=50`, `GET /api/v1/demo/stations/:id/control` và `PATCH /api/v1/demo/stations/:id/control`. Các tuyến điều khiển chỉ hoạt động khi `DEMO_ONLY=true` và chỉ chấp nhận ba station ID mô phỏng. `received_at` dùng giờ server; `device_ts` có thể null. API demo không có xác thực nên ai có đường dẫn đều điều khiển được ba kịch bản giả lập; không bật các route này cho trạm thật.
 
+## Cảnh báo đẩy Android (FCM)
+
+Backend gửi high-priority data message khi trạm chuyển sang `WARNING` hoặc `EMERGENCY`. Để kích hoạt, tạo Firebase service account cho cùng Firebase project với app Android, rồi cấu hình `GOOGLE_APPLICATION_CREDENTIALS` trỏ đến file JSON service-account bí mật và `FIREBASE_PROJECT_ID` (nếu cần). Trên Render, lưu JSON bằng Secret File và đặt biến đường dẫn tới file đã mount; không commit file khóa vào repository. Thiết bị đăng ký token qua `/api/v1/notifications/register`; migration `004_notification_devices.sql` tạo bảng lưu token và hệ thống tự xóa token hết hạn. Nếu chưa đặt credentials, backend chạy bình thường nhưng FCM bị tắt.
+
+Node.js runtime phải từ phiên bản 22 trở lên để tương thích Firebase Admin SDK.
+
 ## Render demo
 
 `render.yaml` tắt MQTT và bật `DEMO_ONLY`. Migration đăng ký ba vùng/cảm biến và cấu hình điều khiển; service ghi số đo mô phỏng mỗi 5 giây, lưu lịch sử tối đa 7 ngày, lưu sự kiện đổi cấp và phát WebSocket. Tốc độ nhập theo cm/phút được quy đổi theo chu kỳ 5 giây; ngưỡng tốc độ mặc định 5/10/15 cm/phút có thể chỉnh từ web. Bộ dữ liệu mẫu cũ cho `sim-01` được giữ làm lịch sử ban đầu. API Render chỉ cung cấp dữ liệu mô phỏng công khai.

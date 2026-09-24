@@ -95,6 +95,11 @@ export const demoControlPatchSchema = z.object({
   reset: z.boolean().optional(),
 }).refine(value => Object.keys(value).length > 0, 'Cần thay đổi ít nhất một thông số');
 
+export const notificationDeviceSchema = z.object({
+  station_id: stationId,
+  fcm_token: z.string().min(40).max(4096),
+});
+
 export type Telemetry = z.infer<typeof telemetrySchema>;
 export type Alert = z.infer<typeof alertSchema>;
 export type Status = z.infer<typeof statusSchema>;

@@ -24,5 +24,7 @@ services:
         value: "false"
       - key: DEMO_ONLY
         value: "true"
+      - key: FIREBASE_PROJECT_ID
+        value: fwa-flood-watch
       - key: STALE_AFTER_SECONDS
         value: "15"

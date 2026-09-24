@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Inject, Module, NotFoundException, Param, Patch, Provider, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, Module, NotFoundException, Param, Patch, Post, Provider, Query } from '@nestjs/common';
 import { Database } from './database';
-import { demoControlPatchSchema } from './contracts';
+import { demoControlPatchSchema, notificationDeviceSchema } from './contracts';
 import { DemoSimulator } from './demo-simulator';
 import { MqttIngest } from './mqtt-ingest';
+import { PushNotifications } from './push-notifications';
 import { Stream } from './stream';
 
 function limitOf(raw: string | undefined) {
@@ -22,6 +23,7 @@ class ApiController {
   constructor(
     @Inject(Database) private readonly db: Database,
     @Inject(DemoSimulator) private readonly simulator: DemoSimulator,
+    @Inject(PushNotifications) private readonly push: PushNotifications,
   ) {}
 
   @Get('/healthz')
@@ -41,8 +43,18 @@ class ApiController {
   }
 
   @Get('/api/v1/stations/:id/telemetry')
-  async telemetry(@Param('id') id: string, @Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+  async telemetry(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('window') window?: string,
+  ) {
     if (!await this.db.station(id)) throw new NotFoundException('Không tìm thấy trạm');
+    if (window !== undefined) {
+      if (window !== '1h') throw new BadRequestException('window chỉ hỗ trợ 1h');
+      return this.db.telemetryLastHour(id);
+    }
     const start = dateOf(from), end = dateOf(to);
     if (start && end && (start > end || end.getTime() - start.getTime() > 7 * 86400000)) {
       throw new BadRequestException('Khoảng thời gian tối đa 7 ngày');
@@ -54,6 +66,19 @@ class ApiController {
   async alerts(@Query('station_id') id?: string, @Query('limit') limit?: string, @Query('before') before?: string) {
     if (id && !await this.db.station(id)) throw new NotFoundException('Không tìm thấy trạm');
     return this.db.alerts(id, limitOf(limit), dateOf(before));
+  }
+
+  @Post('/api/v1/notifications/register')
+  async registerNotificationDevice(@Body() body: unknown) {
+    const parsed = notificationDeviceSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('station_id hoặc mã thiết bị thông báo không hợp lệ.');
+    }
+    if (!await this.db.station(parsed.data.station_id)) {
+      throw new NotFoundException('Không tìm thấy trạm');
+    }
+    await this.db.registerNotificationDevice(parsed.data.station_id, parsed.data.fcm_token);
+    return { registered: true, push_enabled: this.push.enabled };
   }
 
   @Get('/api/v1/demo/stations/:id/control')
@@ -79,7 +104,7 @@ class ApiController {
   }
 }
 
-const providers: Provider[] = [Database, Stream];
+const providers: Provider[] = [Database, Stream, PushNotifications];
 providers.push(DemoSimulator);
 if (process.env.MQTT_ENABLED !== 'false') providers.push(MqttIngest);
 

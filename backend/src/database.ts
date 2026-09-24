@@ -123,6 +123,33 @@ export class Database implements OnModuleDestroy {
     return r.rows;
   }
 
+  async telemetryLastHour(stationId: string) {
+    const r = await this.pool.query(`SELECT DISTINCT ON (date_trunc('minute', received_at)) *
+      FROM telemetry
+      WHERE station_id=$1 AND received_at >= now() - interval '1 hour' AND received_at <= now()
+      ORDER BY date_trunc('minute', received_at) DESC, received_at DESC, message_id DESC`, [stationId]);
+    return r.rows;
+  }
+
+  async registerNotificationDevice(stationId: string, token: string) {
+    await this.pool.query(`INSERT INTO notification_devices(fcm_token, station_id)
+      VALUES($1, $2)
+      ON CONFLICT(fcm_token) DO UPDATE SET station_id=EXCLUDED.station_id, updated_at=now()`,
+    [token, stationId]);
+  }
+
+  async notificationTokens(stationId: string): Promise<string[]> {
+    const r = await this.pool.query(
+      'SELECT fcm_token FROM notification_devices WHERE station_id=$1',
+      [stationId],
+    );
+    return r.rows.map(row => String(row.fcm_token));
+  }
+
+  async removeNotificationDevice(token: string) {
+    await this.pool.query('DELETE FROM notification_devices WHERE fcm_token=$1', [token]);
+  }
+
   async alerts(stationId: string | undefined, limit: number, before?: Date) {
     const r = await this.pool.query(`SELECT * FROM alerts WHERE ($1::text IS NULL OR station_id=$1)
       AND ($2::timestamptz IS NULL OR received_at < $2)

@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, OnModuleDestroy, OnMod
 import { randomUUID } from 'crypto';
 import { Database } from './database';
 import { demoRegions, isDemoStation } from './demo-regions';
+import { PushNotifications } from './push-notifications';
 import { Stream } from './stream';
 import type { DemoControlPatch } from './contracts';
 
@@ -55,6 +56,7 @@ export class DemoSimulator implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(Database) private readonly db: Database,
     @Inject(Stream) private readonly stream: Stream,
+    @Inject(PushNotifications) private readonly push: PushNotifications,
   ) {}
 
   async onModuleInit() {
@@ -297,7 +299,10 @@ export class DemoSimulator implements OnModuleInit, OnModuleDestroy {
         firmware_version: telemetry.firmware_version,
       };
       const inserted = await this.db.saveAlert(alert, 'SIMULATED');
-      if (inserted) this.stream.publish('station.alert', { station_id: stationId, alert_id: alert.alert_id });
+      if (inserted) {
+        this.stream.publish('station.alert', { station_id: stationId, alert_id: alert.alert_id });
+        void this.push.notifyAlert(stationId, alert.alert_id, riskState.level);
+      }
     }
 
     if (latest) this.stream.publish('station.telemetry', { station_id: stationId, region_id: demoRegions.find(region => region.stationId === stationId)?.id });

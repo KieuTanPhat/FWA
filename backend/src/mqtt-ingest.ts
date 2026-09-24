@@ -2,13 +2,18 @@ import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import mqtt, { MqttClient } from 'mqtt';
 import { alertSchema, statusSchema, telemetrySchema } from './contracts';
 import { Database } from './database';
+import { PushNotifications } from './push-notifications';
 import { Stream } from './stream';
 
 @Injectable()
 export class MqttIngest implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MqttIngest.name);
   private client?: MqttClient;
-  constructor(@Inject(Database) private readonly db: Database, @Inject(Stream) private readonly stream: Stream) {}
+  constructor(
+    @Inject(Database) private readonly db: Database,
+    @Inject(Stream) private readonly stream: Stream,
+    @Inject(PushNotifications) private readonly push: PushNotifications,
+  ) {}
 
   onModuleInit() {
     if (process.env.MQTT_ENABLED === 'false') {
@@ -53,7 +58,10 @@ export class MqttIngest implements OnModuleInit, OnModuleDestroy {
         const value = alertSchema.parse(raw);
         if (value.station_id !== stationId) throw new Error('station_id không khớp topic');
         const inserted = await this.db.saveAlert(value, station.data_origin);
-        if (inserted) this.stream.publish('station.alert', { station_id: stationId, alert_id: value.alert_id });
+        if (inserted) {
+          this.stream.publish('station.alert', { station_id: stationId, alert_id: value.alert_id });
+          void this.push.notifyAlert(stationId, value.alert_id, value.current_level ?? '');
+        }
         // ACK chỉ sau khi DB INSERT thành công; duplicate đã lưu cũng được ACK.
         this.client?.publish(`flood/${stationId}/alert/ack`, JSON.stringify({ alert_id: value.alert_id }), { qos: 1 });
       } else {
